@@ -5,6 +5,7 @@ import { FileText, FolderLock, Loader2, Plus, Trash2, Upload } from "lucide-reac
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, type DocumentMeta, type Workspace } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { timeAgo } from "@/lib/utils";
 import { PageHeader, EmptyState } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -64,6 +65,7 @@ export default function RoomsPage() {
     setUploading(true);
     try {
       await api.uploadDocument(active.id, file);
+      track("document_uploaded", { ext: file.name.split(".").pop() });
       toast.success(`${file.name} ingested`);
       loadDocs(active);
     } catch (err) {

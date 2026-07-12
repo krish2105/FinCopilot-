@@ -5,9 +5,11 @@ import { ArrowUp, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, type AgentAnswer, type Citation } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { AgentProgress } from "@/components/workspace/agent-progress";
 import { AnswerCard } from "@/components/workspace/answer-card";
+import { Onboarding } from "@/components/workspace/onboarding";
 import { SourcePanel } from "@/components/workspace/source-panel";
 import { Button } from "@/components/ui/button";
 
@@ -62,6 +64,7 @@ export default function WorkspacePage() {
     setLoading(true);
     setStreamStep("");
     setStreamText("");
+    track("query_asked", { scoped: Boolean(roomId), tickers: selected.length });
     try {
       await api.askStream(query, selected, roomId || undefined, {
         onStep: (label) => setStreamStep(label),
@@ -107,16 +110,25 @@ export default function WorkspacePage() {
               A team of agents retrieves evidence, runs the analysis, checks compliance, and
               returns a fully cited answer — or refuses when the evidence isn&apos;t there.
             </p>
-            <div className="mt-7 grid w-full gap-2 sm:grid-cols-2">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => submit(s)}
-                  className="rounded-xl border border-border bg-card p-3.5 text-left text-sm text-muted-foreground transition-all hover:border-accent/40 hover:text-foreground hover:shadow-card cursor-pointer"
-                >
-                  {s}
-                </button>
-              ))}
+            <div className="mt-7 w-full">
+              <Onboarding
+                steps={[
+                  { label: "Ask your first question", done: false },
+                  { label: "Create a private data room", done: rooms.length > 0, href: "/rooms" },
+                  { label: "Upload a document to a room", done: false, href: "/rooms" },
+                ]}
+              />
+              <div className="grid w-full gap-2 sm:grid-cols-2">
+                {SUGGESTIONS.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => submit(s)}
+                    className="rounded-xl border border-border bg-card p-3.5 text-left text-sm text-muted-foreground transition-all hover:border-accent/40 hover:text-foreground hover:shadow-card cursor-pointer"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
           </motion.div>
         ) : (

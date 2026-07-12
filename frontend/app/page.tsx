@@ -43,7 +43,23 @@ export default function Landing() {
       {/* Nav */}
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/70 backdrop-blur-md">
         <div className="container flex h-16 items-center justify-between">
-          <Wordmark />
+          <div className="flex items-center gap-8">
+            <Wordmark />
+            <nav className="hidden items-center gap-6 md:flex">
+              <Link
+                href="/pricing"
+                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Pricing
+              </Link>
+              <Link
+                href="/docs"
+                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Docs
+              </Link>
+            </nav>
+          </div>
           <div className="flex items-center gap-2">
             <a
               href="https://github.com/krish2105/FinCopilot-"

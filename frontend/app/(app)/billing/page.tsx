@@ -5,6 +5,7 @@ import { Check, CreditCard, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api, type Plan, type Usage } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { PageHeader, EmptyState } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +53,7 @@ export default function BillingPage() {
   }, []);
 
   async function upgrade(planId: string) {
+    track("upgrade_clicked", { plan: planId });
     if (!configured) {
       toast.info("Billing isn't configured", {
         description: "Set STRIPE_SECRET_KEY on the backend to enable checkout.",
