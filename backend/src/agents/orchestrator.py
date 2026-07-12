@@ -16,12 +16,14 @@ import logging
 
 from langgraph.graph import END, START, StateGraph
 
-from src.agents import analyst, compliance, researcher, visualization
+from src.agents import analyst, classifier, compliance, researcher, visualization
 from src.agents.prompts import SYNTHESIS_SYSTEM, format_evidence, format_findings
 from src.agents.schemas import AgentAnswer, ProviderCall
 from src.agents.state import AgentState
 from src.config.settings import Settings, get_settings
 from src.providers.router import ProviderRouter, get_router
+from src.retrieval import agentic, graphrag
+from src.retrieval.graph import EntityGraph, graph_path
 from src.retrieval.retriever import Retriever, get_retriever
 
 logger = logging.getLogger(__name__)
@@ -33,15 +35,20 @@ class AgentGraph:
         retriever: Retriever | None = None,
         router: ProviderRouter | None = None,
         settings: Settings | None = None,
+        entity_graph: EntityGraph | None = None,
     ):
         self.settings = settings or get_settings()
         self.retriever = retriever or get_retriever()
         self.router = router or get_router()
+        # May be None before the first ingestion; relationship route then falls
+        # back to hybrid search.
+        self.entity_graph = entity_graph or EntityGraph.load(graph_path())
         self.graph = self._build()
 
     # --- graph wiring ---
     def _build(self):
         b = StateGraph(AgentState)
+        b.add_node("classify", self._classify)
         b.add_node("research", self._research)
         b.add_node("analyze", self._analyze)
         b.add_node("comply", self._comply)
@@ -49,7 +56,8 @@ class AgentGraph:
         b.add_node("synthesize", self._synthesize)
         b.add_node("refuse", self._refuse)
 
-        b.add_edge(START, "research")
+        b.add_edge(START, "classify")
+        b.add_edge("classify", "research")
         b.add_edge("research", "analyze")
         b.add_edge("analyze", "comply")
         b.add_conditional_edges(
@@ -61,9 +69,32 @@ class AgentGraph:
         return b.compile()
 
     # --- nodes ---
+    def _classify(self, state: AgentState) -> dict:
+        trace: list = []
+        decision = classifier.classify(self.router, state["query"], trace)
+        return {"planned_route": decision.route, "provider_trace": trace}
+
     def _research(self, state: AgentState) -> dict:
-        result = researcher.research(self.retriever, state["query"], state.get("tickers"), top_k=6)
-        return {"retrieval": result, "route": result.route}
+        query = state["query"]
+        tickers = state.get("tickers")
+        planned = state.get("planned_route", "simple")
+        trace: list = []
+
+        if planned == "relationship" and self.entity_graph is not None:
+            result = graphrag.graphrag_retrieve(
+                self.entity_graph, self.retriever.store, query, tickers, top_k=8
+            )
+            # Empty graph match -> fall back to hybrid so we still try to answer.
+            if not result.chunks:
+                result = researcher.research(self.retriever, query, tickers, top_k=6)
+        elif planned == "multi_hop":
+            result = agentic.agentic_retrieve(
+                self.retriever, self.router, query, tickers, top_k=6, trace=trace
+            )
+        else:
+            result = researcher.research(self.retriever, query, tickers, top_k=6)
+
+        return {"retrieval": result, "route": result.route, "provider_trace": trace}
 
     def _analyze(self, state: AgentState) -> dict:
         trace: list = []
@@ -134,6 +165,7 @@ class AgentGraph:
         return AgentAnswer(
             query=query,
             route=final.get("route", "hybrid"),
+            planned_route=final.get("planned_route", "simple"),
             verdict=final.get("verdict", "ok"),
             answer=final.get("answer", ""),
             citations=retrieval.citations if retrieval else [],

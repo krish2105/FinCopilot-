@@ -44,7 +44,7 @@ def root() -> dict[str, object]:
     return {
         "name": "FinCopilot API",
         "version": app.version,
-        "phase": "3 — agents",
+        "phase": "4 — adaptive routing + GraphRAG",
         "tickers": settings.tickers,
         "disclaimer": "Informational research only. Not investment advice.",
     }
@@ -72,3 +72,14 @@ def corpus_stats() -> dict[str, object]:
         "bm25_docs": len(bm25) if bm25 else 0,
         "chunks_by_ticker": by_ticker,
     }
+
+
+@app.get("/graph/stats")
+def graph_stats() -> dict[str, object]:
+    """Entity-graph summary that backs the GraphRAG relationship route (Phase 4)."""
+    from src.retrieval.graph import EntityGraph, graph_path
+
+    graph = EntityGraph.load(graph_path())
+    if graph is None:
+        return {"built": False, "message": "No entity graph yet — run ingestion."}
+    return {"built": True, **graph.stats()}

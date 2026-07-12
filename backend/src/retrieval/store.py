@@ -40,6 +40,7 @@ class VectorStore:
 
     def upsert(self, chunks: list[Chunk]) -> int: ...
     def existing_ids(self, ids: list[str]) -> set[str]: ...
+    def get_by_ids(self, ids: list[str]) -> list[Chunk]: ...
     def count(self) -> int: ...
     def iter_all(self) -> list[Chunk]: ...
     def search(
@@ -161,6 +162,16 @@ class LocalVectorStore(VectorStore):
             batch = ids[i : i + 500]
             q = f"SELECT chunk_id FROM chunks WHERE chunk_id IN ({','.join('?' * len(batch))})"
             out.update(r[0] for r in self.conn.execute(q, batch))
+        return out
+
+    def get_by_ids(self, ids: list[str]) -> list[Chunk]:
+        if not ids:
+            return []
+        out: list[Chunk] = []
+        for i in range(0, len(ids), 500):
+            batch = ids[i : i + 500]
+            q = f"SELECT * FROM chunks WHERE chunk_id IN ({','.join('?' * len(batch))})"
+            out.extend(_row_to_chunk(dict(r)) for r in self.conn.execute(q, batch))
         return out
 
     def count(self) -> int:

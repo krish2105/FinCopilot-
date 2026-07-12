@@ -19,7 +19,8 @@ class AgentState(TypedDict, total=False):
     query: str
     tickers: list[str] | None
     # routing
-    route: str
+    planned_route: str  # classifier verdict: simple | multi_hop | relationship
+    route: str  # actual retrieval route used
     # agent outputs
     retrieval: RetrievalResult | None
     analyst: AnalystOutput | None

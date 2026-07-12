@@ -56,8 +56,8 @@ SEED_CORPUS = [
         "AAPL",
         "10-K",
         "Item 1A. Risk Factors",
-        "Risk factors include supply chain concentration, component shortages, and "
-        "foreign exchange volatility affecting reported results.",
+        "Risk factors include supply chain concentration, component shortages, "
+        "foreign exchange volatility, and intense competition affecting results.",
     ),
     (
         "AAPL",
@@ -127,3 +127,13 @@ def seeded_retriever(settings):
     return Retriever(
         settings=settings, embedder=embedder, store=store, bm25=bm25, reranker=reranker
     )
+
+
+@pytest.fixture
+def seeded_graph(seeded_retriever, settings):
+    """Entity graph built from the same store the seeded_retriever uses."""
+    import os
+
+    from src.retrieval.graph import EntityGraph
+
+    return EntityGraph.build(seeded_retriever.store, os.path.join(settings.data_dir, "graph.json"))

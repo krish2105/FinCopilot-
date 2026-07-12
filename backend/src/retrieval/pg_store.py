@@ -97,6 +97,17 @@ class PgVectorStore(VectorStore):
         ).fetchall()
         return {r[0] for r in rows}
 
+    def get_by_ids(self, ids: list[str]) -> list[Chunk]:
+        if not ids:
+            return []
+        rows = self.conn.execute(
+            "SELECT chunk_id, doc_id, ticker, doc_type, title, source_url, "
+            "filing_date, page, section, text, token_estimate, embedding "
+            "FROM chunks WHERE chunk_id = ANY(%s)",
+            (ids,),
+        ).fetchall()
+        return [self._row_to_chunk(r) for r in rows]
+
     def count(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
 

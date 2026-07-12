@@ -17,6 +17,7 @@ from src.ingestion.fetchers import edgar, market, news
 from src.ingestion.models import Chunk, RawDocument
 from src.ingestion.parse import parse_document
 from src.retrieval.bm25 import BM25Index, bm25_path
+from src.retrieval.graph import EntityGraph, graph_path
 from src.retrieval.store import VectorStore, get_vector_store
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,8 @@ class IngestStats:
     embed_backend: str = ""
     store_count: int = 0
     bm25_docs: int = 0
+    graph_nodes: int = 0
+    graph_edges: int = 0
 
     def as_dict(self) -> dict:
         return self.__dict__
@@ -107,11 +110,14 @@ def ingest(
         chunks = _chunk_documents(docs)
         _embed_and_store(chunks, embedder, store, stats)
 
-    # Rebuild BM25 over the full corpus (cheap, keeps it in sync with the store).
+    # Rebuild BM25 + entity graph over the full corpus (kept in sync with store).
     all_chunks = store.iter_all()
     bm25 = BM25Index.build(all_chunks, bm25_path())
+    entity_graph = EntityGraph.build(store, graph_path())
     stats.store_count = store.count()
     stats.bm25_docs = len(bm25)
+    stats.graph_nodes = entity_graph.g.number_of_nodes()
+    stats.graph_edges = entity_graph.g.number_of_edges()
 
     logger.info("Ingest done | %s", stats.as_dict())
     return stats

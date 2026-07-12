@@ -11,6 +11,13 @@ from pydantic import BaseModel, Field
 from src.retrieval.types import Citation
 
 
+class RouteDecision(BaseModel):
+    """Adaptive-router verdict: which retrieval pipeline should answer."""
+
+    route: str = "simple"  # "simple" | "multi_hop" | "relationship"
+    reason: str = ""
+
+
 class Finding(BaseModel):
     """A single analytic claim tied to a source via its citation marker."""
 
@@ -71,7 +78,8 @@ class AgentAnswer(BaseModel):
     """The full, cited result the API returns for a query."""
 
     query: str
-    route: str = "hybrid"
+    route: str = "hybrid"  # actual retrieval route: hybrid | agentic | graphrag
+    planned_route: str = "simple"  # classifier verdict: simple | multi_hop | relationship
     verdict: str = "ok"  # "ok" | "insufficient_evidence"
     answer: str = ""
     citations: list[Citation] = Field(default_factory=list)

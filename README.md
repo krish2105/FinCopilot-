@@ -100,6 +100,22 @@ curl -s localhost:8000/ask -H 'content-type: application/json' \
 The response includes the cited answer, the analyst's cited findings, compliance
 flags, chart specs, the verdict, and the provider trace.
 
+**Adaptive routing** (Phase 4): a complexity classifier picks the cheapest
+pipeline per query and the orchestrator dispatches accordingly —
+
+| Query shape | Route | Engine |
+| --- | --- | --- |
+| single factual lookup | `simple` | hybrid search (Phase 2) |
+| compound / comparative | `multi_hop` | agentic loop (query decomposition, ≤3 iters) |
+| relationship / "share this risk" | `relationship` | **GraphRAG** over a NetworkX entity graph |
+
+The entity graph (`backend/src/retrieval/graph.py`) is built during ingestion —
+`company → faces → risk` and `company → has_officer → executive` edges, each
+carrying citation metadata — so "which companies share competition risk?"
+traverses to the answer with real filing citations. `GET /graph/stats` shows the
+graph; every answer reports both its `planned_route` and the actual `route` used
+(the UI's route badge).
+
 > Full run instructions and real RAGAS evaluation numbers are added as later phases
 > land. This README is intentionally a stub during Phase 0.
 
@@ -111,7 +127,7 @@ Built phase-by-phase; the commit history tells the story.
 - [x] Phase 1 — ingestion (EDGAR + market + news → pgvector + BM25)
 - [x] Phase 2 — advanced RAG (hybrid + reranker + citations)
 - [x] Phase 3 — agents (LangGraph orchestrator + specialists + provider router)
-- [ ] Phase 4 — adaptive routing + GraphRAG
+- [x] Phase 4 — adaptive routing + GraphRAG
 - [ ] Phase 5 — Self-RAG gate + refusal + audit log
 - [ ] Phase 6 — premium frontend + Supabase Auth
 - [ ] Phase 7 — RAGAS evaluation
