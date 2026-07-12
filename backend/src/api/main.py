@@ -44,7 +44,7 @@ def root() -> dict[str, object]:
     return {
         "name": "FinCopilot API",
         "version": app.version,
-        "phase": "5 — self-RAG gate + audit log",
+        "phase": "7 — RAGAS evaluation",
         "tickers": settings.tickers,
         "disclaimer": "Informational research only. Not investment advice.",
     }
@@ -83,6 +83,21 @@ def graph_stats() -> dict[str, object]:
     if graph is None:
         return {"built": False, "message": "No entity graph yet — run ingestion."}
     return {"built": True, **graph.stats()}
+
+
+@app.get("/eval")
+def eval_results() -> dict[str, object]:
+    """Latest RAGAS/eval results for the evaluation dashboard (Phase 7)."""
+    import json
+    import os
+
+    from src.evaluation.harness import latest_results_path
+
+    path = latest_results_path()
+    if not os.path.exists(path):
+        return {"available": False, "message": "No evaluation run yet."}
+    with open(path) as f:
+        return {"available": True, **json.load(f)}
 
 
 @app.get("/audit")

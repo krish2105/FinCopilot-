@@ -110,6 +110,40 @@ export interface AuditRecord {
   latency_ms: number;
 }
 
+export interface EvalResult {
+  available: boolean;
+  message?: string;
+  benchmark?: string;
+  generated_at?: string;
+  n_questions?: number;
+  n_companies?: number;
+  stack?: { embed_backend: string; reranker: string; llm_mode: string };
+  metrics?: {
+    n_questions: number;
+    context_hit: number;
+    answer_match: number;
+    faithful_rate: number;
+    citation_coverage: number;
+    refusal_rate: number;
+    avg_latency_ms: number;
+  };
+  ragas?: {
+    faithfulness?: number;
+    answer_relevancy?: number;
+    context_precision?: number;
+    context_recall?: number;
+  } | null;
+  per_question?: {
+    company: string;
+    question: string;
+    gold: string;
+    context_hit: number;
+    answer_match: number;
+    faithful: number;
+    route: string;
+  }[];
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -133,6 +167,7 @@ export const api = {
   graphStats: () => req<GraphStats>("/graph/stats"),
   audit: (limit = 100) =>
     req<{ count: number; records: AuditRecord[] }>(`/audit?limit=${limit}`),
+  eval: () => req<EvalResult>("/eval"),
   meta: () => req<{ tickers: string[]; phase: string }>("/"),
 };
 

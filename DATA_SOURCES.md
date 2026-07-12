@@ -36,6 +36,19 @@ benchmark's questions don't overlap our default tickers, we additionally ingest 
 benchmark's own source filings so the eval is answerable from our corpus. Each
 benchmark is used under its published license/terms for research/evaluation.
 
+### What we actually ran (Phase 7)
+
+- **Benchmark:** FinanceBench, `financebench_open_source.jsonl`
+  (github.com/patronus-ai/financebench · Hugging Face `PatronusAI/financebench`),
+  licensed **CC-BY-4.0**.
+- **Sample:** 50 questions stratified across 17 companies (incl. JPMorgan, which is
+  in our default ticker set), committed to `eval/test_questions.jsonl` with each
+  question's real gold answer and gold **evidence passage** from the real 10-K.
+- **Eval corpus:** built from those gold evidence passages (real filing text) so
+  retrieval is evaluated as a needle-in-haystack over real content — self-contained
+  and reproducible, with no synthetic data.
+- **No LLM-generated questions or answers** anywhere in the evaluation.
+
 ## Compliance note
 
 No synthetic, scraped-proprietary, or paywalled data is used anywhere in ingestion or
