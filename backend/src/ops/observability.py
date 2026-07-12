@@ -1,15 +1,23 @@
-"""Guarded observability hooks (Phase 12): Sentry + Langfuse.
+"""Guarded observability (Phase 12/18): Sentry + OpenTelemetry → Langfuse.
 
-Both are no-ops unless configured, so the app stays dependency-light offline.
+All no-ops unless configured, so the app stays dependency-light offline. When
+Langfuse keys are present and the OpenTelemetry packages are installed, `span()`
+emits a trace span per agent step (retrieve/analyze/generate/judge), exported to
+Langfuse over OTLP for trace-level root-cause analysis.
 """
 
 from __future__ import annotations
 
+import base64
 import logging
+from contextlib import contextmanager
 
 from src.config.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+_tracer = None
+_LANGFUSE_OTLP = "https://cloud.langfuse.com/api/public/otel/v1/traces"
 
 
 def init_sentry(settings: Settings) -> None:
@@ -28,16 +36,42 @@ def langfuse_enabled(settings: Settings) -> bool:
     return bool(settings.langfuse_public_key and settings.langfuse_secret_key)
 
 
-def trace_llm(settings: Settings, name: str, metadata: dict) -> None:
-    """Record an LLM call to Langfuse when configured (best-effort, non-blocking)."""
+def init_tracing(settings: Settings) -> None:
+    """Wire an OpenTelemetry tracer that exports spans to Langfuse (guarded)."""
+    global _tracer
     if not langfuse_enabled(settings):
         return
     try:
-        from langfuse import Langfuse
+        from opentelemetry import trace
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-        lf = Langfuse(
-            public_key=settings.langfuse_public_key, secret_key=settings.langfuse_secret_key
+        auth = base64.b64encode(
+            f"{settings.langfuse_public_key}:{settings.langfuse_secret_key}".encode()
+        ).decode()
+        exporter = OTLPSpanExporter(
+            endpoint=_LANGFUSE_OTLP, headers={"Authorization": f"Basic {auth}"}
         )
-        lf.trace(name=name, metadata=metadata)
-    except Exception as exc:  # never break a request on tracing
-        logger.debug("Langfuse trace failed: %s", exc)
+        provider = TracerProvider()
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+        trace.set_tracer_provider(provider)
+        _tracer = trace.get_tracer("fincopilot")
+        logger.info("OpenTelemetry tracing -> Langfuse initialized")
+    except Exception as exc:
+        logger.warning("Tracing init failed: %s", exc)
+
+
+@contextmanager
+def span(name: str, **attributes):
+    """A trace span; a no-op context manager when tracing isn't configured."""
+    if _tracer is None:
+        yield None
+        return
+    with _tracer.start_as_current_span(name) as s:
+        for k, v in attributes.items():
+            try:
+                s.set_attribute(k, v)
+            except Exception:
+                pass
+        yield s

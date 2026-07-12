@@ -31,7 +31,9 @@ Two live URLs at the end: a **Vercel** frontend and a **Render** backend, backed
    create extension if not exists vector;
    ```
    (Or paste `backend/src/retrieval/schema.sql`; `PgVectorStore` also creates the
-   table at runtime.)
+   table at runtime.) For DB-enforced tenant isolation, also apply
+   `backend/src/db/rls.sql` (Row-Level Security) and point `DATABASE_URL` at the
+   non-owner `fincopilot_app` role it describes.
 3. Copy from **Project Settings → API**: `Project URL` (→ `SUPABASE_URL` /
    `NEXT_PUBLIC_SUPABASE_URL`), `anon` key (→ `NEXT_PUBLIC_SUPABASE_ANON_KEY`),
    `service_role` key (→ `SUPABASE_SERVICE_ROLE_KEY`).
@@ -76,6 +78,13 @@ Two live URLs at the end: a **Vercel** frontend and a **Render** backend, backed
    while Render cold-starts).
 2. Check `/dashboard`, `/audit`, `/evaluation` load live data from the API.
 3. Add both live URLs to the top of `README.md`.
+
+## 4b. (Optional) Async ingestion worker + observability
+
+- Set `REDIS_URL` and add a second Render service running
+  `python -m src.ops.worker` so document uploads ingest off the request path.
+- Set `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` to export OpenTelemetry agent
+  spans to Langfuse, and `SENTRY_DSN` for error tracking. All are no-ops if unset.
 
 ## 5. (Optional) Hugging Face Space mirror
 

@@ -27,6 +27,7 @@ rank-bm25==0.2.2
 supabase==2.11.0
 pgvector==0.3.6
 psycopg[binary]==3.2.3
+psycopg-pool==3.2.4
 
 # --- Ingestion (Phase 1) ---
 pypdf==5.1.0
@@ -40,4 +41,5 @@ networkx==3.4.2
 
 # --- Ops / observability (Phase 12, guarded) ---
 redis==5.2.1
+rq==2.0.0
 sentry-sdk==2.19.2

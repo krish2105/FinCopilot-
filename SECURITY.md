@@ -11,6 +11,10 @@ We aim to acknowledge within 72 hours.
 - **Tenant isolation** — every vector chunk carries a `workspace_id`; retrieval is
   filtered so a tenant can only ever read the shared public corpus plus its own
   data rooms. The unauthenticated `/retrieve` endpoint is scoped to public only.
+  In production on Postgres, this is enforced a second time by **Row-Level
+  Security** (`backend/src/db/rls.sql`): each request sets `app.current_org` via a
+  connection pool, and RLS policies make cross-tenant reads impossible even if
+  application code has a bug.
 - **Auth** — Supabase JWTs are verified with `SUPABASE_JWT_SECRET`; API keys are
   stored hashed. Set `AUTH_REQUIRED=true` in production to reject anonymous calls.
 - **Prompt-injection defenses** — uploaded documents are untrusted; evidence is

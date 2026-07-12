@@ -110,4 +110,9 @@ def get_principal(
     x_api_key: str | None = Header(default=None),
     settings: Settings = Depends(get_settings),
 ) -> Principal:
-    return resolve_principal(settings, get_db(settings), authorization, x_api_key)
+    db = get_db(settings)
+    principal = resolve_principal(settings, db, authorization, x_api_key)
+    # Bind the tenant context so Postgres RLS + the connection pool scope every
+    # subsequent query in this request to the caller's org.
+    db.set_tenant(principal.org_id)
+    return principal

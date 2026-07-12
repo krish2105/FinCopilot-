@@ -29,6 +29,7 @@ from src.agents.prompts import SYNTHESIS_SYSTEM, format_evidence, format_finding
 from src.agents.schemas import AgentAnswer, FaithfulnessVerdict, ProviderCall
 from src.agents.state import AgentState
 from src.config.settings import Settings, get_settings
+from src.ops.observability import span
 from src.providers.router import ProviderRouter, get_router
 from src.retrieval import agentic, graphrag
 from src.retrieval.graph import EntityGraph, graph_path
@@ -105,36 +106,38 @@ class AgentGraph:
         planned = state.get("planned_route", "simple")
         trace: list = []
 
-        if planned == "relationship" and self.entity_graph is not None:
-            result = graphrag.graphrag_retrieve(
-                self.entity_graph, self.retriever.store, query, tickers, top_k=8
-            )
-            # Empty graph match -> fall back to hybrid so we still try to answer.
-            if not result.chunks:
+        with span("agent.research", route=planned, broadened=broadened):
+            if planned == "relationship" and self.entity_graph is not None:
+                result = graphrag.graphrag_retrieve(
+                    self.entity_graph, self.retriever.store, query, tickers, top_k=8
+                )
+                # Empty graph match -> fall back to hybrid so we still try to answer.
+                if not result.chunks:
+                    result = researcher.research(
+                        self.retriever, query, tickers, top_k=top_k, workspaces=workspaces
+                    )
+            elif planned == "multi_hop":
+                result = agentic.agentic_retrieve(
+                    self.retriever,
+                    self.router,
+                    query,
+                    tickers,
+                    top_k=top_k,
+                    trace=trace,
+                    workspaces=workspaces,
+                )
+            else:
                 result = researcher.research(
                     self.retriever, query, tickers, top_k=top_k, workspaces=workspaces
                 )
-        elif planned == "multi_hop":
-            result = agentic.agentic_retrieve(
-                self.retriever,
-                self.router,
-                query,
-                tickers,
-                top_k=top_k,
-                trace=trace,
-                workspaces=workspaces,
-            )
-        else:
-            result = researcher.research(
-                self.retriever, query, tickers, top_k=top_k, workspaces=workspaces
-            )
 
         return {"retrieval": result, "route": result.route, "provider_trace": trace}
 
     def _analyze(self, state: AgentState) -> dict:
-        trace: list = []
-        out = analyst.analyze(self.router, state["query"], state.get("retrieval"), trace)
-        return {"analyst": out, "provider_trace": trace}
+        with span("agent.analyze"):
+            trace: list = []
+            out = analyst.analyze(self.router, state["query"], state.get("retrieval"), trace)
+            return {"analyst": out, "provider_trace": trace}
 
     def _comply(self, state: AgentState) -> dict:
         out = compliance.check(state.get("retrieval"), state.get("analyst"))
@@ -153,35 +156,37 @@ class AgentGraph:
         return {"viz": visualization.build(state.get("analyst"))}
 
     def _synthesize(self, state: AgentState) -> dict:
-        trace: list = []
-        retrieval = state["retrieval"]
-        analyst_out = state.get("analyst")
-        prompt = (
-            f"Question: {state['query']}\n\n"
-            f"Evidence:\n{wrap_untrusted(format_evidence(retrieval))}\n\n"
-            f"Analyst findings:\n{format_findings(analyst_out.findings if analyst_out else [])}\n\n"
-            "Write a concise, fully-cited answer using only the evidence above."
-        )
-        answer = self.router.text(
-            prompt,
-            system=SYNTHESIS_SYSTEM,
-            stub_text=retrieval.answer,  # Phase 2 extractive answer as offline fallback
-            trace=trace,
-        )
-        return {"answer": answer, "verdict": "ok", "provider_trace": trace}
+        with span("agent.synthesize"):
+            trace: list = []
+            retrieval = state["retrieval"]
+            analyst_out = state.get("analyst")
+            prompt = (
+                f"Question: {state['query']}\n\n"
+                f"Evidence:\n{wrap_untrusted(format_evidence(retrieval))}\n\n"
+                f"Analyst findings:\n{format_findings(analyst_out.findings if analyst_out else [])}\n\n"
+                "Write a concise, fully-cited answer using only the evidence above."
+            )
+            answer = self.router.text(
+                prompt,
+                system=SYNTHESIS_SYSTEM,
+                stub_text=retrieval.answer,  # Phase 2 extractive answer as offline fallback
+                trace=trace,
+            )
+            return {"answer": answer, "verdict": "ok", "provider_trace": trace}
 
     def _verify(self, state: AgentState) -> dict:
         """Self-RAG gate: verify grounding. On failure the graph may loop back to
         re-retrieve (broadened) before giving up — the re-retrieval-on-failure
         pattern that keeps unsupported answers from slipping through."""
-        trace: list = []
-        verdict = faithfulness.verify(
-            self.router, state.get("answer", ""), state.get("retrieval"), trace
-        )
-        out: dict = {"faithfulness": verdict, "provider_trace": trace}
-        if not verdict.faithful:
-            out["retry_count"] = state.get("retry_count", 0) + 1
-        return out
+        with span("agent.verify"):
+            trace: list = []
+            verdict = faithfulness.verify(
+                self.router, state.get("answer", ""), state.get("retrieval"), trace
+            )
+            out: dict = {"faithfulness": verdict, "provider_trace": trace}
+            if not verdict.faithful:
+                out["retry_count"] = state.get("retry_count", 0) + 1
+            return out
 
     def _route_after_verify(self, state: AgentState) -> str:
         v = state.get("faithfulness")

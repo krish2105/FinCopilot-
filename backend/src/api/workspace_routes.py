@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -10,7 +11,6 @@ from pydantic import BaseModel, Field
 from src.auth.principal import Principal, get_principal
 from src.billing.quota import enforce_document_quota
 from src.db.database import get_db
-from src.ingestion.upload import UploadError, ingest_upload
 from src.retrieval.retriever import get_retriever
 from src.tenancy import repo
 
@@ -59,31 +59,31 @@ async def upload_document(
     _owned_workspace(db, principal, workspace_id)
     org = repo.get_org(db, principal.org_id)
     enforce_document_quota(db, principal.org_id, org.plan if org else "free")
+
+    filename = file.filename or "document"
     data = await file.read()
     doc = repo.create_document(
-        db,
-        principal.org_id,
-        workspace_id,
-        file.filename or "document",
-        (file.filename or "").rsplit(".", 1)[-1],
-        principal.user_id,
+        db, principal.org_id, workspace_id, filename, filename.rsplit(".", 1)[-1], principal.user_id
     )
-    try:
-        n = ingest_upload(
-            get_retriever(),
-            principal.org_id,
-            workspace_id,
-            doc.id,
-            file.filename or "document",
-            data,
-        )
-    except UploadError as exc:
+
+    # Stage the file, then run the ingestion job (async on RQ, else inline).
+    from src.config.settings import get_settings
+    from src.ingestion.jobs import ingest_document_job
+    from src.ops.jobs import submit
+
+    upload_dir = os.path.join(get_settings().data_dir, "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    path = os.path.join(upload_dir, f"{doc.id}_{filename}")
+    with open(path, "wb") as f:
+        f.write(data)
+
+    ran_async = submit(ingest_document_job, principal.org_id, workspace_id, doc.id, path, filename)
+    # Re-read status: async -> 'processing' (frontend polls); inline -> ready/failed.
+    fresh = repo.get_document(db, doc.id) or doc
+    if not ran_async and fresh.status == "failed":
         repo.delete_document(db, doc.id)
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    repo.finalize_document(db, doc.id, n)
-    doc.status = "ready"
-    doc.chunk_count = n
-    return doc.model_dump()
+        raise HTTPException(status_code=400, detail="Could not ingest the document.")
+    return fresh.model_dump()
 
 
 @router.delete("/documents/{doc_id}")

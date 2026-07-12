@@ -18,10 +18,11 @@ from src.api.workspace_routes import router as workspace_router
 from src.auth.principal import Principal, get_principal
 from src.config.settings import get_settings
 from src.db.database import get_db
-from src.ops.observability import init_sentry
+from src.ops.observability import init_sentry, init_tracing
 
 settings = get_settings()
 init_sentry(settings)
+init_tracing(settings)
 
 app = FastAPI(
     title="FinCopilot API",

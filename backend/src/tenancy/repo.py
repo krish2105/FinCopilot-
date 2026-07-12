@@ -165,6 +165,10 @@ def finalize_document(db: Database, doc_id: str, chunk_count: int) -> None:
     )
 
 
+def set_document_status(db: Database, doc_id: str, status: str) -> None:
+    db.execute("UPDATE documents SET status = ? WHERE id = ?", (status, doc_id))
+
+
 def list_documents(db: Database, workspace_id: str) -> list[Document]:
     rows = db.query(
         "SELECT * FROM documents WHERE workspace_id = ? ORDER BY created_at DESC", (workspace_id,)
