@@ -28,6 +28,8 @@ const SUGGESTIONS = [
 export default function WorkspacePage() {
   const [tickers, setTickers] = useState<string[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
+  const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
+  const [roomId, setRoomId] = useState<string>("");
   const [input, setInput] = useState("");
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [loading, setLoading] = useState(false);
@@ -38,6 +40,10 @@ export default function WorkspacePage() {
     api
       .meta()
       .then((m) => setTickers(m.tickers || []))
+      .catch(() => {});
+    api
+      .workspaces()
+      .then((r) => setRooms(r.workspaces.map((w) => ({ id: w.id, name: w.name }))))
       .catch(() => {});
   }, []);
 
@@ -53,7 +59,7 @@ export default function WorkspacePage() {
     setInput("");
     setLoading(true);
     try {
-      const answer = await api.ask(query, selected);
+      const answer = await api.ask(query, selected, roomId || undefined);
       setExchanges((e) => e.map((x) => (x.id === id ? { ...x, answer } : x)));
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Request failed";
@@ -140,6 +146,25 @@ export default function WorkspacePage() {
 
       {/* Composer */}
       <div className="border-t border-border bg-background/80 p-4 backdrop-blur-md sm:px-6">
+        {rooms.length > 0 && (
+          <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Scope
+            </span>
+            <select
+              value={roomId}
+              onChange={(e) => setRoomId(e.target.value)}
+              className="rounded-full border border-border bg-card px-2.5 py-0.5 text-[11px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
+            >
+              <option value="">Public + all rooms</option>
+              {rooms.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} (+ public)
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {tickers.length > 0 && (
           <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">

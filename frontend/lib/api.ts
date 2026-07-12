@@ -144,10 +144,67 @@ export interface EvalResult {
   }[];
 }
 
+export interface Workspace {
+  id: string;
+  org_id: string;
+  name: string;
+  kind: string;
+}
+export interface DocumentMeta {
+  id: string;
+  workspace_id: string;
+  filename: string;
+  doc_type: string;
+  status: string;
+  chunk_count: number;
+  created_at: string;
+}
+export interface ConversationMeta {
+  id: string;
+  workspace_id: string;
+  title: string;
+  created_at: string;
+}
+export interface Plan {
+  id: string;
+  name: string;
+  price_usd_month: number;
+  queries_per_month: number;
+  max_documents: number;
+  max_seats: number;
+  features: string[];
+}
+export interface Usage {
+  plan: Plan;
+  queries_used: number;
+  queries_limit: number;
+  queries_remaining: number;
+  documents_used: number;
+  documents_limit: number;
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  // Attach the Supabase session token when auth is configured; else demo tenant.
+  try {
+    const { getSupabase } = await import("@/lib/supabase");
+    const sb = getSupabase();
+    if (sb) {
+      const {
+        data: { session },
+      } = await sb.auth.getSession();
+      if (session?.access_token) return { Authorization: `Bearer ${session.access_token}` };
+    }
+  } catch {
+    /* demo mode */
+  }
+  return {};
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const auth = await authHeaders();
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    headers: { "Content-Type": "application/json", ...auth, ...(init?.headers || {}) },
     cache: "no-store",
   });
   if (!res.ok) {
@@ -158,10 +215,51 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  ask: (query: string, tickers?: string[]) =>
+  ask: (query: string, tickers?: string[], workspaceId?: string) =>
     req<AgentAnswer>("/ask", {
       method: "POST",
-      body: JSON.stringify({ query, tickers: tickers?.length ? tickers : null }),
+      body: JSON.stringify({
+        query,
+        tickers: tickers?.length ? tickers : null,
+        workspace_id: workspaceId || null,
+      }),
+    }),
+  // workspaces / data rooms
+  workspaces: () => req<{ workspaces: Workspace[] }>("/workspaces"),
+  createWorkspace: (name: string) =>
+    req<Workspace>("/workspaces", { method: "POST", body: JSON.stringify({ name }) }),
+  documents: (wsId: string) =>
+    req<{ documents: DocumentMeta[] }>(`/workspaces/${wsId}/documents`),
+  deleteDocument: (docId: string) =>
+    req<{ deleted: string }>(`/documents/${docId}`, { method: "DELETE" }),
+  uploadDocument: async (wsId: string, file: File) => {
+    const auth = await authHeaders();
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${API_BASE}/workspaces/${wsId}/documents`, {
+      method: "POST",
+      headers: auth,
+      body: form,
+    });
+    if (!res.ok) throw new Error(`API ${res.status}: ${await res.text().catch(() => "")}`);
+    return res.json() as Promise<DocumentMeta>;
+  },
+  // billing / usage
+  usage: () => req<Usage>("/usage"),
+  plans: () => req<{ plans: Plan[]; configured: boolean }>("/billing/plans"),
+  checkout: (planId: string) =>
+    req<{ url: string }>("/billing/checkout", {
+      method: "POST",
+      body: JSON.stringify({
+        plan_id: planId,
+        success_url: `${window.location.origin}/billing?ok=1`,
+        cancel_url: `${window.location.origin}/billing`,
+      }),
+    }),
+  feedback: (rating: number, query: string) =>
+    req<{ recorded: boolean }>("/feedback", {
+      method: "POST",
+      body: JSON.stringify({ rating, query }),
     }),
   corpusStats: () => req<CorpusStats>("/corpus/stats"),
   graphStats: () => req<GraphStats>("/graph/stats"),

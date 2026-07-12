@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ClipboardList,
+  CreditCard,
+  FolderLock,
   GaugeCircle,
   LayoutDashboard,
   Menu,
@@ -19,9 +21,11 @@ import { isAuthConfigured } from "@/lib/supabase";
 
 const NAV = [
   { href: "/workspace", label: "Workspace", icon: MessagesSquare },
+  { href: "/rooms", label: "Data Rooms", icon: FolderLock },
   { href: "/dashboard", label: "Ticker Dashboard", icon: LayoutDashboard },
   { href: "/audit", label: "Audit Log", icon: ClipboardList },
   { href: "/evaluation", label: "Evaluation", icon: GaugeCircle },
+  { href: "/billing", label: "Billing", icon: CreditCard },
 ];
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {

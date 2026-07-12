@@ -40,6 +40,7 @@ def run_eval(
     settings: Settings | None = None,
     limit: int | None = None,
     dataset_path: str | None = None,
+    write: bool = True,
 ) -> dict:
     settings = settings or get_settings()
     questions = load_questions(dataset_path or default_dataset_path())
@@ -107,12 +108,13 @@ def run_eval(
         "per_question": per_question,
     }
 
-    os.makedirs(results_dir(), exist_ok=True)
-    with open(latest_results_path(), "w") as f:
-        json.dump(result, f, indent=2)
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-    with open(os.path.join(results_dir(), f"ragas_{stamp}.json"), "w") as f:
-        json.dump(result, f, indent=2)
+    if write:
+        os.makedirs(results_dir(), exist_ok=True)
+        with open(latest_results_path(), "w") as f:
+            json.dump(result, f, indent=2)
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+        with open(os.path.join(results_dir(), f"ragas_{stamp}.json"), "w") as f:
+            json.dump(result, f, indent=2)
 
     logger.info("eval done | %s", agg)
     return result

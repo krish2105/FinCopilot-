@@ -61,3 +61,17 @@ def test_dataset_loads_real_questions():
     assert q.benchmark == "FinanceBench"
     assert q.question and q.answer and q.evidence
     assert q.ticker
+
+
+def test_eval_regression_smoke(settings):
+    """Run the full pipeline over a few real benchmark questions offline and assert
+    grounding invariants hold — a CI regression guard (no files written)."""
+    from src.evaluation.harness import run_eval
+
+    result = run_eval(settings, limit=3, write=False)
+    m = result["metrics"]
+    assert m["n_questions"] == 3
+    assert set(m) >= {"context_hit", "answer_match", "faithful_rate", "citation_coverage"}
+    # Offline extractive answers are always grounded + cited.
+    assert m["faithful_rate"] == 1.0
+    assert m["citation_coverage"] == 1.0

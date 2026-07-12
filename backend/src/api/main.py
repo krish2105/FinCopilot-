@@ -13,6 +13,7 @@ from src.api.account_routes import router as account_router
 from src.api.agent_routes import router as agent_router
 from src.api.billing_routes import router as billing_router
 from src.api.retrieval_routes import router as retrieval_router
+from src.api.saas_routes import router as saas_router
 from src.api.workspace_routes import router as workspace_router
 from src.auth.principal import Principal, get_principal
 from src.config.settings import get_settings
@@ -41,6 +42,7 @@ app.include_router(agent_router)
 app.include_router(workspace_router)
 app.include_router(billing_router)
 app.include_router(account_router)
+app.include_router(saas_router)
 
 
 @app.middleware("http")
@@ -74,7 +76,7 @@ def root() -> dict[str, object]:
     return {
         "name": "FinCopilot API",
         "version": app.version,
-        "phase": "13 — security + compliance",
+        "phase": "14 — depth + GTM",
         "tickers": settings.tickers,
         "disclaimer": "Informational research only. Not investment advice.",
     }

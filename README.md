@@ -196,6 +196,25 @@ Built phase-by-phase; the commit history tells the story.
 - [x] Phase 6 — premium frontend + Supabase Auth
 - [x] Phase 7 — RAGAS evaluation
 - [x] Phase 8 — deploy config (Vercel + Render + Supabase) + green CI
+- [ ] Phase 9 — live LLM + SSE streaming (needs API keys)
+- [x] Phase 10 — multi-tenancy + data rooms (workspace-isolated retrieval, uploads)
+- [x] Phase 11 — billing + usage metering (plans, quotas, guarded Stripe)
+- [x] Phase 12 — ops (rate limiting, DB audit, chunk purge, Sentry/Langfuse hooks)
+- [x] Phase 13 — security (injection defenses, GDPR export/delete, CodeQL, headers)
+- [x] Phase 14 — depth & GTM (feedback, API keys, watchlists, export, filing alerts)
+
+### SaaS layer
+
+Beyond the core copilot, FinCopilot is a multi-tenant B2B SaaS: **data rooms**
+(private, tenant-isolated document collections with upload → per-workspace
+retrieval), **auth** (Supabase JWT / API keys, demo tenant offline), **billing**
+(Free/Pro/Team plans with enforced query + document quotas; guarded Stripe),
+**ops** (per-principal rate limiting, tenant-scoped audit trail, `/ready`, guarded
+Sentry + Langfuse), **security/compliance** (prompt-injection defenses, GDPR
+export/delete, CodeQL + Dependabot, security headers), and **growth** (👍/👎
+feedback, public API keys, filing-alert watchlists, cited report export). Frontend
+screens: Data Rooms and Billing & Usage, plus a data-room scope selector and
+feedback in the workspace.
 
 ## Disclaimer
 

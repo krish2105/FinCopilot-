@@ -88,6 +88,9 @@ class Database:
             """CREATE TABLE IF NOT EXISTS api_keys (
                 id TEXT PRIMARY KEY, org_id TEXT NOT NULL, name TEXT, prefix TEXT,
                 key_hash TEXT NOT NULL, created_at TEXT NOT NULL, last_used TEXT)""",
+            """CREATE TABLE IF NOT EXISTS watchlists (
+                id TEXT PRIMARY KEY, org_id TEXT NOT NULL, ticker TEXT NOT NULL,
+                last_accession TEXT, created_at TEXT NOT NULL)""",
             """CREATE TABLE IF NOT EXISTS audit (
                 id TEXT PRIMARY KEY, org_id TEXT, user_id TEXT, ts TEXT NOT NULL,
                 query TEXT, tickers TEXT, planned_route TEXT, route TEXT, verdict TEXT,

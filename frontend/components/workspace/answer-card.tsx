@@ -8,9 +8,13 @@ import {
   Cpu,
   Quote,
   ShieldAlert,
+  ThumbsDown,
+  ThumbsUp,
   TrendingUp,
 } from "lucide-react";
-import type { AgentAnswer } from "@/lib/api";
+import { useState } from "react";
+import { toast } from "sonner";
+import { api, type AgentAnswer } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { RouteBadge } from "@/components/route-badge";
 import { CitationText } from "@/components/workspace/citation-text";
@@ -269,7 +273,39 @@ export function AnswerCard({
         </>
       )}
 
-      <p className="text-center text-[11px] text-muted-foreground">{answer.disclaimer}</p>
+      <div className="flex items-center justify-between">
+        <FeedbackButtons query={answer.query} />
+        <p className="text-[11px] text-muted-foreground">{answer.disclaimer}</p>
+      </div>
     </motion.div>
+  );
+}
+
+function FeedbackButtons({ query }: { query: string }) {
+  const [sent, setSent] = useState<number | null>(null);
+  function rate(r: number) {
+    if (sent !== null) return;
+    setSent(r);
+    api.feedback(r, query).catch(() => {});
+    toast.success("Thanks for the feedback");
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-[11px] text-muted-foreground">Helpful?</span>
+      <button
+        onClick={() => rate(1)}
+        aria-label="Helpful"
+        className={`rounded-md p-1.5 transition-colors hover:bg-muted ${sent === 1 ? "text-positive" : "text-muted-foreground"}`}
+      >
+        <ThumbsUp className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={() => rate(-1)}
+        aria-label="Not helpful"
+        className={`rounded-md p-1.5 transition-colors hover:bg-muted ${sent === -1 ? "text-danger" : "text-muted-foreground"}`}
+      >
+        <ThumbsDown className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }
