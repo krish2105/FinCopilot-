@@ -1,0 +1,160 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --radius: 0.85rem;
+
+    /* ---------- Light theme ---------- */
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --muted: 214 32% 95%;
+    --muted-foreground: 215 19% 42%;
+    --border: 214 32% 89%;
+    --input: 214 32% 89%;
+    --ring: 160 84% 39%;
+    --primary: 222 47% 11%;
+    --primary-foreground: 210 40% 98%;
+    --accent: 160 84% 36%;
+    --accent-foreground: 0 0% 100%;
+
+    --positive: 160 84% 34%;
+    --warning: 32 95% 44%;
+    --danger: 0 74% 48%;
+
+    --route-hybrid: 199 89% 42%;
+    --route-agentic: 262 83% 58%;
+    --route-graphrag: 322 81% 46%;
+
+    --shadow: 222 47% 30%;
+
+    /* chart series (accessible, distinct in both themes) */
+    --chart-1: 160 84% 39%;
+    --chart-2: 199 89% 48%;
+    --chart-3: 262 83% 62%;
+    --chart-4: 32 95% 52%;
+    --chart-5: 322 81% 56%;
+    --chart-grid: 214 32% 88%;
+  }
+
+  .dark {
+    /* ---------- Dark theme (deep slate, not pure black) ---------- */
+    --background: 222 47% 5%;
+    --foreground: 210 40% 98%;
+    --card: 222 40% 8%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 44% 7%;
+    --popover-foreground: 210 40% 98%;
+    --muted: 217 33% 13%;
+    --muted-foreground: 215 20% 66%;
+    --border: 216 34% 17%;
+    --input: 216 34% 19%;
+    --ring: 152 76% 45%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222 47% 11%;
+    --accent: 152 72% 45%;
+    --accent-foreground: 222 47% 7%;
+
+    --positive: 152 68% 47%;
+    --warning: 38 92% 55%;
+    --danger: 0 84% 64%;
+
+    --route-hybrid: 199 89% 55%;
+    --route-agentic: 262 83% 70%;
+    --route-graphrag: 322 86% 66%;
+
+    --shadow: 222 60% 2%;
+
+    --chart-1: 152 72% 50%;
+    --chart-2: 199 89% 58%;
+    --chart-3: 262 83% 72%;
+    --chart-4: 38 92% 58%;
+    --chart-5: 322 86% 66%;
+    --chart-grid: 216 34% 18%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Smooth, non-jarring theme cross-fade — enabled only after first paint
+     (the `.theme-ready` class is added on mount) to avoid a load-time flash. */
+  .theme-ready body,
+  .theme-ready body *:not(svg *) {
+    transition:
+      background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+      border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+      color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+      fill 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    .theme-ready body,
+    .theme-ready body * {
+      transition: none !important;
+    }
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Frosted grid background for hero/section flourish */
+  .grid-bg {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.5) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.5) 1px, transparent 1px);
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+  }
+
+  .glass {
+    background: hsl(var(--card) / 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .text-gradient {
+    background: linear-gradient(135deg, hsl(var(--foreground)), hsl(var(--accent)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

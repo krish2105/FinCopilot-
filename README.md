@@ -130,6 +130,22 @@ latency — to a JSONL trail (`backend/src/audit/`), readable via `GET /audit`.
 This is both the compliance trail and the FinOps story (which provider answered,
 how fast).
 
+## Frontend (Phase 6)
+
+A premium **Next.js 14** dashboard (`frontend/`) — Tailwind · Recharts ·
+framer-motion · Supabase Auth — with a dark-mode-first, Bloomberg-terminal-meets-
+SaaS aesthetic and a smooth light/dark toggle (AA contrast in both). Screens:
+landing, login (demo-mode fallback when Supabase isn't configured), the chat
+**workspace** (inline citation chips, source panel, RAG route badge, findings,
+compliance flags, charts, faithfulness bar, the calm "insufficient evidence" state,
+live provider trace), the **ticker dashboard** (corpus + entity-graph analytics),
+the **audit log**, and the **evaluation** gauges.
+
+```bash
+cd frontend && npm install
+npm run dev   # http://localhost:3000  (set NEXT_PUBLIC_API_URL to the backend)
+```
+
 > Full run instructions and real RAGAS evaluation numbers are added as later phases
 > land. This README is intentionally a stub during Phase 0.
 
@@ -143,7 +159,7 @@ Built phase-by-phase; the commit history tells the story.
 - [x] Phase 3 — agents (LangGraph orchestrator + specialists + provider router)
 - [x] Phase 4 — adaptive routing + GraphRAG
 - [x] Phase 5 — Self-RAG gate + refusal + audit log
-- [ ] Phase 6 — premium frontend + Supabase Auth
+- [x] Phase 6 — premium frontend + Supabase Auth
 - [ ] Phase 7 — RAGAS evaluation
 - [ ] Phase 8 — deploy (Vercel + Render + Supabase) + CI
 
