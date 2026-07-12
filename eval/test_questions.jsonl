@@ -1,0 +1,1 @@
+{"_comment": "Placeholder. Populated in Phase 7 by sampling REAL questions from FinQA / TAT-QA / FinanceBench (see DATA_SOURCES.md). No synthetic/self-generated questions. Each line will be: {\"id\", \"benchmark\", \"question\", \"answer\", \"ticker\", \"source_doc\"}."}

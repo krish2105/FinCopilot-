@@ -1,0 +1,50 @@
+# --- Secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+.coverage
+htmlcov/
+
+# --- Node / Next.js ---
+node_modules/
+.next/
+out/
+.vercel/
+npm-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+
+# --- Ingested data & caches (real filings are fetched, not committed) ---
+data/
+backend/.cache/
+*.sqlite
+*.db
+
+# --- Local model weights (downloaded on demand) ---
+models/
+*.bin
+*.safetensors
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- Eval intermediate (keep results/, ignore scratch) ---
+eval/scratch/

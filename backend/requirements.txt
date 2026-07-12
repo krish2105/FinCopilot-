@@ -1,0 +1,39 @@
+# --- Core API ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+httpx==0.28.1
+
+# --- Orchestration / agents (used from Phase 3) ---
+langgraph==0.2.60
+langchain-core==0.3.28
+
+# --- LLM providers (Phase 3) ---
+google-genai==0.8.0
+groq==0.13.1
+
+# --- Retrieval (Phase 1–2) ---
+rank-bm25==0.2.2
+sentence-transformers==3.3.1
+supabase==2.11.0
+pgvector==0.3.6
+psycopg[binary]==3.2.3
+
+# --- Ingestion (Phase 1) ---
+sec-edgar-downloader==5.0.3
+yfinance==0.2.51
+beautifulsoup4==4.12.3
+lxml==5.3.0
+
+# --- Graph (Phase 4) ---
+networkx==3.4.2
+
+# --- Evaluation (Phase 7) ---
+ragas==0.2.9
+datasets==3.2.0
+
+# --- Dev / test ---
+pytest==8.3.4
+ruff==0.8.4

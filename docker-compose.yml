@@ -1,0 +1,33 @@
+# FinCopilot — local one-command run (skeleton, fleshed out in later phases).
+# `docker compose up` builds the FastAPI backend and the Next.js frontend.
+# The database is Supabase (managed, free tier) — set DATABASE_URL in .env.
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fincopilot-backend
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./data:/app/data
+    # Reload for local dev; production image runs without --reload
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fincopilot-frontend
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
