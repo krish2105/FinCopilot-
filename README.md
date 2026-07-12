@@ -81,8 +81,24 @@ curl -s localhost:8000/retrieve -H 'content-type: application/json' \
 ```
 
 Every returned chunk carries a `[n]` citation marker tied to a real filing
-page/section and source URL. LLM answer synthesis over these citations arrives in
-Phase 3.
+page/section and source URL.
+
+The agent layer (`backend/src/agents`) runs a **LangGraph** state machine —
+`research → analyze → comply → (visualize → synthesize | refuse)` — over a
+**multi-provider LLM router** (`backend/src/providers`) that falls through Gemini
+2.5 Flash-Lite → Flash → Groq Llama 3.3 70B → Groq GPT-OSS 120B on rate
+limits/errors, with backoff, response caching, and a per-request provider trace
+for the audit log. Compliance can veto to an honest *"insufficient evidence"*
+refusal. It runs **live** with a `GEMINI_API_KEY`/`GROQ_API_KEY`, or fully
+**offline** with a deterministic stub (no keys needed for CI/demos). Ask it:
+
+```bash
+curl -s localhost:8000/ask -H 'content-type: application/json' \
+  -d '{"query": "What risk factors does Apple disclose?", "tickers": ["AAPL"]}'
+```
+
+The response includes the cited answer, the analyst's cited findings, compliance
+flags, chart specs, the verdict, and the provider trace.
 
 > Full run instructions and real RAGAS evaluation numbers are added as later phases
 > land. This README is intentionally a stub during Phase 0.
@@ -94,7 +110,7 @@ Built phase-by-phase; the commit history tells the story.
 - [x] Phase 0 — repo scaffold, config, CI skeleton, GitHub remote
 - [x] Phase 1 — ingestion (EDGAR + market + news → pgvector + BM25)
 - [x] Phase 2 — advanced RAG (hybrid + reranker + citations)
-- [ ] Phase 3 — agents (LangGraph orchestrator + specialists + provider router)
+- [x] Phase 3 — agents (LangGraph orchestrator + specialists + provider router)
 - [ ] Phase 4 — adaptive routing + GraphRAG
 - [ ] Phase 5 — Self-RAG gate + refusal + audit log
 - [ ] Phase 6 — premium frontend + Supabase Auth
