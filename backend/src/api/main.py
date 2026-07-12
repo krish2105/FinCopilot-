@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.retrieval_routes import router as retrieval_router
 from src.config.settings import get_settings
 
 settings = get_settings()
@@ -27,6 +28,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(retrieval_router)
+
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -39,7 +42,7 @@ def root() -> dict[str, object]:
     return {
         "name": "FinCopilot API",
         "version": app.version,
-        "phase": "1 — ingestion",
+        "phase": "2 — advanced RAG",
         "tickers": settings.tickers,
         "disclaimer": "Informational research only. Not investment advice.",
     }

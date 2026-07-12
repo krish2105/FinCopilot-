@@ -5,6 +5,7 @@ import os
 
 # Must be set before src.config.settings is first imported/cached.
 os.environ.setdefault("FINCOPILOT_EMBED_BACKEND", "hash")
+os.environ.setdefault("FINCOPILOT_RERANK_BACKEND", "lexical")
 os.environ.setdefault("FINCOPILOT_OFFLINE_MODE", "true")
 
 import pytest
@@ -40,3 +41,89 @@ SAMPLE_10K_HTML = """
 @pytest.fixture
 def sample_html() -> str:
     return SAMPLE_10K_HTML
+
+
+# A tiny real-shaped corpus for retrieval tests: (ticker, doc_type, section, text)
+SEED_CORPUS = [
+    (
+        "AAPL",
+        "10-K",
+        "Item 7. MD&A",
+        "Apple total net sales were 391 billion dollars in fiscal 2024, an increase "
+        "driven by iPhone and Services revenue growth.",
+    ),
+    (
+        "AAPL",
+        "10-K",
+        "Item 1A. Risk Factors",
+        "Risk factors include supply chain concentration, component shortages, and "
+        "foreign exchange volatility affecting reported results.",
+    ),
+    (
+        "AAPL",
+        "market",
+        "profile",
+        "Apple gross margin expanded year over year due to a favorable Services mix.",
+    ),
+    (
+        "MSFT",
+        "10-K",
+        "Item 7. MD&A",
+        "Microsoft total revenue was 245 billion dollars, driven by Intelligent "
+        "Cloud and Azure growth.",
+    ),
+    (
+        "MSFT",
+        "10-K",
+        "Item 1A. Risk Factors",
+        "Microsoft faces cybersecurity risk and intense competition in cloud computing markets.",
+    ),
+    (
+        "AAPL",
+        "8-K",
+        "Body",
+        "The annual shareholder meeting will be held in Cupertino next quarter.",
+    ),
+]
+
+
+@pytest.fixture
+def seeded_retriever(settings):
+    """A Retriever over a small in-memory corpus (hash embed, lexical rerank)."""
+    import os
+
+    from src.ingestion.embed import Embedder
+    from src.ingestion.models import Chunk, DocType, SourceMetadata
+    from src.retrieval.bm25 import BM25Index
+    from src.retrieval.reranker import Reranker
+    from src.retrieval.retriever import Retriever
+    from src.retrieval.store import LocalVectorStore
+
+    embedder = Embedder(settings)
+    store = LocalVectorStore(
+        embedder.dim, embedder.name, os.path.join(settings.data_dir, "v.sqlite")
+    )
+    chunks = []
+    for i, (ticker, dt, section, text) in enumerate(SEED_CORPUS):
+        md = SourceMetadata(
+            ticker=ticker,
+            doc_type=DocType(dt),
+            title=f"{ticker} {dt}",
+            source_url=f"https://sec.gov/{ticker}/{i}",
+            page=i + 1,
+            section=section,
+        )
+        c = Chunk(
+            chunk_id=Chunk.make_chunk_id(f"{ticker}-{i}", text),
+            doc_id=f"{ticker}-{i}",
+            text=text,
+            metadata=md,
+            embedding=embedder.embed([text])[0],
+        )
+        chunks.append(c)
+    store.upsert(chunks)
+    bm25 = BM25Index.build(chunks, os.path.join(settings.data_dir, "bm25.json"))
+    reranker = Reranker(settings)
+    return Retriever(
+        settings=settings, embedder=embedder, store=store, bm25=bm25, reranker=reranker
+    )

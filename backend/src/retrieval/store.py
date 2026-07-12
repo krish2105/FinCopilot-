@@ -42,7 +42,9 @@ class VectorStore:
     def existing_ids(self, ids: list[str]) -> set[str]: ...
     def count(self) -> int: ...
     def iter_all(self) -> list[Chunk]: ...
-    def search(self, query_vec: list[float], k: int = 8) -> list[SearchHit]: ...
+    def search(
+        self, query_vec: list[float], k: int = 8, tickers: list[str] | None = None
+    ) -> list[SearchHit]: ...
     def assert_query_compatible(self, dim: int, embed_model: str) -> None:
         if dim != self.dim:
             raise ValueError(
@@ -79,7 +81,10 @@ class LocalVectorStore(VectorStore):
         self.embed_model = embed_model
         self.path = path
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        self.conn = sqlite3.connect(path)
+        # check_same_thread=False: FastAPI runs sync handlers in a threadpool, so
+        # the process-wide retriever/store is accessed from worker threads. Access
+        # is effectively serialized (one query at a time) for our read/write mix.
+        self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._init_schema()
 
@@ -165,11 +170,18 @@ class LocalVectorStore(VectorStore):
         rows = self.conn.execute("SELECT * FROM chunks").fetchall()
         return [_row_to_chunk(dict(r)) for r in rows]
 
-    def search(self, query_vec: list[float], k: int = 8) -> list[SearchHit]:
+    def search(
+        self, query_vec: list[float], k: int = 8, tickers: list[str] | None = None
+    ) -> list[SearchHit]:
         import numpy as np
 
         self.assert_query_compatible(len(query_vec), self.embed_model)
-        rows = self.conn.execute("SELECT * FROM chunks WHERE embedding IS NOT NULL").fetchall()
+        sql = "SELECT * FROM chunks WHERE embedding IS NOT NULL"
+        params: list = []
+        if tickers:
+            sql += f" AND ticker IN ({','.join('?' * len(tickers))})"
+            params = [t.upper() for t in tickers]
+        rows = self.conn.execute(sql, params).fetchall()
         if not rows:
             return []
         q = np.asarray(query_vec, dtype=np.float32)

@@ -108,15 +108,23 @@ class PgVectorStore(VectorStore):
         ).fetchall()
         return [self._row_to_chunk(r) for r in rows]
 
-    def search(self, query_vec: list[float], k: int = 8) -> list[SearchHit]:
+    def search(
+        self, query_vec: list[float], k: int = 8, tickers: list[str] | None = None
+    ) -> list[SearchHit]:
         self.assert_query_compatible(len(query_vec), self.embed_model)
+        where = "WHERE embedding IS NOT NULL"
+        params: list = [query_vec]
+        if tickers:
+            where += " AND ticker = ANY(%s)"
+            params.append([t.upper() for t in tickers])
+        params += [query_vec, k]
         rows = self.conn.execute(
             "SELECT chunk_id, text, ticker, doc_type, title, source_url, "
             "filing_date, page, section, "
             "1 - (embedding <=> %s::vector) AS score "
-            "FROM chunks WHERE embedding IS NOT NULL "
+            f"FROM chunks {where} "
             "ORDER BY embedding <=> %s::vector LIMIT %s",
-            (query_vec, query_vec, k),
+            tuple(params),
         ).fetchall()
         hits = []
         for r in rows:

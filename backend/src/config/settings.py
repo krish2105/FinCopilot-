@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     #   local -> sentence-transformers bge-small (falls back to hash if unavailable)
     #   hash  -> deterministic hashing embedder (CI/tests: no torch, no network)
     fincopilot_embed_backend: str = "auto"
+    # Reranker backend: "auto" | "cross-encoder" | "lexical".
+    #   auto -> cross-encoder unless offline mode (which forces lexical)
+    fincopilot_rerank_backend: str = "auto"
     # Chunking (token estimates use ~4 chars/token).
     chunk_target_tokens: int = 512
     chunk_overlap_tokens: int = 64

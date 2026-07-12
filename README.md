@@ -69,6 +69,21 @@ vector store (Supabase pgvector, or a local SQLite store when no `DATABASE_URL`)
 plus a BM25 index. It is idempotent — re-running an unchanged corpus embeds
 nothing new.
 
+The retrieval layer (`backend/src/retrieval`) then answers queries via
+**hybrid search** (dense pgvector + BM25, fused with Reciprocal Rank Fusion) → a
+local **cross-encoder reranker** (`ms-marco-MiniLM-L-6-v2`, with a deterministic
+lexical fallback offline) → **citation formatting**, returning ranked evidence
+and an extractive, fully-cited answer. Try it:
+
+```bash
+curl -s localhost:8000/retrieve -H 'content-type: application/json' \
+  -d '{"query": "What were Apple total net sales by product category?", "tickers": ["AAPL"]}'
+```
+
+Every returned chunk carries a `[n]` citation marker tied to a real filing
+page/section and source URL. LLM answer synthesis over these citations arrives in
+Phase 3.
+
 > Full run instructions and real RAGAS evaluation numbers are added as later phases
 > land. This README is intentionally a stub during Phase 0.
 
@@ -78,7 +93,7 @@ Built phase-by-phase; the commit history tells the story.
 
 - [x] Phase 0 — repo scaffold, config, CI skeleton, GitHub remote
 - [x] Phase 1 — ingestion (EDGAR + market + news → pgvector + BM25)
-- [ ] Phase 2 — advanced RAG (hybrid + reranker + citations)
+- [x] Phase 2 — advanced RAG (hybrid + reranker + citations)
 - [ ] Phase 3 — agents (LangGraph orchestrator + specialists + provider router)
 - [ ] Phase 4 — adaptive routing + GraphRAG
 - [ ] Phase 5 — Self-RAG gate + refusal + audit log

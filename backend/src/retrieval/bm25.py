@@ -77,11 +77,17 @@ class BM25Index:
         self._bm25 = BM25Okapi(corpus)
 
     # --- query ---
-    def query(self, text: str, k: int = 8) -> list[SearchHit]:
+    def query(self, text: str, k: int = 8, tickers: list[str] | None = None) -> list[SearchHit]:
         if not self._records:
             return []
         scores = self._bm25.get_scores(tokenize(text))
-        ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+        allowed = {t.upper() for t in tickers} if tickers else None
+        candidates = [
+            i
+            for i in range(len(scores))
+            if allowed is None or self._records[i]["ticker"].upper() in allowed
+        ]
+        ranked = sorted(candidates, key=lambda i: scores[i], reverse=True)
         hits: list[SearchHit] = []
         for i in ranked[:k]:
             r = self._records[i]
