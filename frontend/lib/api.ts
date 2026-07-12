@@ -398,6 +398,8 @@ export const api = {
     req<{ count: number; records: AuditRecord[] }>(`/audit?limit=${limit}`),
   eval: () => req<EvalResult>("/eval"),
   meta: () => req<{ tickers: string[]; phase: string }>("/"),
+  health: () => req<{ status: string }>("/health"),
+  ready: () => req<{ ready: boolean; error?: string }>("/ready"),
 };
 
 export const ROUTE_LABEL: Record<string, string> = {

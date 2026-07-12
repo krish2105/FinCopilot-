@@ -119,11 +119,12 @@ FinCopilot is **not a prototype**. It's ~6,800 LOC of backend across 20+ modules
 - ✅ Mobile: confirmed responsive shell (drawer nav, hamburger), onboarding, suggestion grid, responsive dashboard/charts. Friendlier error copy.
 - **Acceptance:** first-time user can ask → share on mobile; shared links re-run the question. ✓
 
-### Phase 28 — Eval as a gate + reliability · 2–3 days · $0
+### Phase 28 — Eval as a gate + reliability · ✅ DONE (2026-07-13) · $0
 **Goal:** quality can't silently regress.
-- Wire eval into CI as a **PR-blocking** gate; add a 200–500 query regression set.
-- Langfuse tracing (free tier) on; basic status page; error monitoring (Sentry free).
-- **Acceptance:** a PR that drops faithfulness/context-hit below baseline fails CI.
+- ✅ **PR-blocking eval gate** (`backend/tests/test_eval_gate.py`): runs the full agent pipeline over a real FinanceBench sample offline and fails the build if context-hit / citation-coverage / faithfulness drop below committed baselines or refusal-rate spikes. Runs in CI (pytest) → can't merge a regression.
+- ✅ **Public status page** (`frontend/app/status/page.tsx`): live checks of API (`/health`), Database (`/ready`), and Market data, with an all-systems banner + refresh; linked in the marketing nav.
+- **Acceptance:** a PR that drops faithfulness/context-hit below baseline fails CI. ✓
+- _Key-gated (do later):_ Langfuse tracing + Sentry (already guarded; flip on with keys).
 
 ### Phase 29 — Monetization foundations · 3–5 days · $0 (Stripe test mode)
 **Goal:** the SaaS skeleton that lets you charge later.
