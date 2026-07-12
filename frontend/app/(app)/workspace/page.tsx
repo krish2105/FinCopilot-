@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Sparkles } from "lucide-react";
+import { ArrowUp, History, Plus, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, type AgentAnswer, type Citation } from "@/lib/api";
@@ -9,6 +9,7 @@ import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { AgentProgress } from "@/components/workspace/agent-progress";
 import { AnswerCard } from "@/components/workspace/answer-card";
+import { HistoryPanel } from "@/components/workspace/history-panel";
 import { Onboarding } from "@/components/workspace/onboarding";
 import { SourcePanel } from "@/components/workspace/source-panel";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,22 @@ export default function WorkspacePage() {
   const [streamStep, setStreamStep] = useState("");
   const [streamText, setStreamText] = useState("");
   const [activeCite, setActiveCite] = useState<Citation | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  async function loadConversation(id: string) {
+    try {
+      const { messages } = await api.conversation(id);
+      const ex: Exchange[] = [];
+      messages.forEach((m, i) => {
+        if (m.role === "user") ex.push({ id: Date.now() + i, query: m.content });
+        else if (m.role === "assistant" && ex.length) ex[ex.length - 1].answer = m.answer;
+      });
+      setExchanges(ex);
+    } catch {
+      toast.error("Could not load conversation");
+    }
+  }
 
   useEffect(() => {
     api
@@ -94,6 +110,24 @@ export default function WorkspacePage() {
 
   return (
     <div className="relative mx-auto flex h-[calc(100dvh-4rem)] max-w-3xl flex-col">
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-4 py-2.5 sm:px-6">
+        <button
+          onClick={() => setHistoryOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"
+        >
+          <History className="h-3.5 w-3.5" /> History
+        </button>
+        {exchanges.length > 0 && (
+          <button
+            onClick={() => setExchanges([])}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"
+          >
+            <Plus className="h-3.5 w-3.5" /> New chat
+          </button>
+        )}
+      </div>
+
       {/* Scroll area */}
       <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 sm:px-6">
         {empty ? (
@@ -246,6 +280,11 @@ export default function WorkspacePage() {
       </div>
 
       <SourcePanel citation={activeCite} onClose={() => setActiveCite(null)} />
+      <HistoryPanel
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onSelect={loadConversation}
+      />
     </div>
   );
 }

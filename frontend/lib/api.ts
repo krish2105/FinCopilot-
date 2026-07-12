@@ -287,6 +287,13 @@ export const api = {
     if (!res.ok) throw new Error(`API ${res.status}: ${await res.text().catch(() => "")}`);
     return res.json() as Promise<DocumentMeta>;
   },
+  // conversation history
+  conversations: () =>
+    req<{ conversations: ConversationMeta[] }>("/conversations"),
+  conversation: (id: string) =>
+    req<{ messages: { role: string; content: string; answer?: AgentAnswer; created_at: string }[] }>(
+      `/conversations/${id}`,
+    ),
   // billing / usage
   usage: () => req<Usage>("/usage"),
   plans: () => req<{ plans: Plan[]; configured: boolean }>("/billing/plans"),

@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/", label: "Product" },
   { href: "/pricing", label: "Pricing" },
   { href: "/docs", label: "Docs" },
+  { href: "/trust", label: "Trust" },
 ];
 
 export function MarketingNav() {

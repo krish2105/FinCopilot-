@@ -1,0 +1,4 @@
+Contact: https://github.com/krish2105/FinCopilot-/security/advisories/new
+Policy: https://github.com/krish2105/FinCopilot-/blob/main/SECURITY.md
+Preferred-Languages: en
+Expires: 2027-01-01T00:00:00.000Z
