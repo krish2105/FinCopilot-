@@ -4,7 +4,7 @@
 sentence-transformers==3.3.1
 ragas==0.2.9
 datasets==3.2.0
-langfuse==2.53.9
+langfuse==4.14.0
 # OpenTelemetry tracing -> Langfuse (Phase 18, guarded)
 opentelemetry-api==1.29.0
 opentelemetry-sdk==1.29.0
