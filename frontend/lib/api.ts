@@ -79,6 +79,51 @@ export interface AgentAnswer {
   disclaimer: string;
 }
 
+// ---- Live market data (Phase 25) ----
+export interface Quote {
+  ticker: string;
+  name: string;
+  price: number;
+  previous_close: number | null;
+  change: number | null;
+  change_pct: number | null;
+  currency: string;
+  market_cap: number | null;
+  day_high: number | null;
+  day_low: number | null;
+  volume: number | null;
+  pe: number | null;
+  fifty_two_week_high: number | null;
+  fifty_two_week_low: number | null;
+  exchange: string | null;
+  sector: string | null;
+  source: string;
+}
+
+export interface PriceHistory {
+  ticker: string;
+  range: string;
+  points: { x: string; y: number }[];
+  change_pct: number | null;
+  source: string;
+}
+
+export interface EarningsRow {
+  date: string;
+  eps_estimate: number | null;
+  eps_reported: number | null;
+  surprise_pct: number | null;
+}
+export interface Earnings {
+  ticker: string;
+  next_date: string | null;
+  history: EarningsRow[];
+  source: string;
+}
+
+export const PRICE_RANGES = ["1M", "3M", "6M", "1Y", "5Y"] as const;
+export type PriceRange = (typeof PRICE_RANGES)[number];
+
 export interface CorpusStats {
   embed_backend: string;
   embed_dim: number;
@@ -342,6 +387,11 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
   deleteApiKey: (id: string) => req(`/api-keys/${id}`, { method: "DELETE" }),
+  // live market data (Phase 25)
+  quote: (ticker: string) => req<Quote>(`/market/quote/${encodeURIComponent(ticker)}`),
+  history: (ticker: string, range: string) =>
+    req<PriceHistory>(`/market/history/${encodeURIComponent(ticker)}?range=${range}`),
+  earnings: (ticker: string) => req<Earnings>(`/market/earnings/${encodeURIComponent(ticker)}`),
   corpusStats: () => req<CorpusStats>("/corpus/stats"),
   graphStats: () => req<GraphStats>("/graph/stats"),
   audit: (limit = 100) =>

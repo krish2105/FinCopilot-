@@ -116,6 +116,61 @@ export function AreaViz({
   );
 }
 
+function PriceTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-lg border border-border bg-popover px-3 py-2 shadow-card">
+      <p className="mb-1 text-xs font-medium text-foreground">{label}</p>
+      <p className="font-mono tabular text-xs text-foreground">
+        {Number(payload[0].value).toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}
+      </p>
+    </div>
+  );
+}
+
+/** Price line/area chart with finance-standard green(up)/red(down) coloring. */
+export function PriceViz({
+  data,
+  up = true,
+  height = 300,
+}: {
+  data: { x: string; y: number }[];
+  up?: boolean;
+  height?: number;
+}) {
+  const color = up ? "#10b981" : "#ef4444"; // emerald-500 / red-500 — legible in both themes
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={data} margin={{ top: 8, right: 8, left: -4, bottom: 8 }}>
+        <defs>
+          <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.32} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid vertical={false} stroke="hsl(var(--chart-grid))" strokeDasharray="4 4" />
+        <XAxis
+          dataKey="x"
+          {...axisProps}
+          minTickGap={48}
+          tickFormatter={(v) => String(v).slice(5)}
+        />
+        <YAxis
+          {...axisProps}
+          width={56}
+          domain={["auto", "auto"]}
+          tickFormatter={(v) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+        />
+        <Tooltip content={<PriceTooltip />} />
+        <Area type="monotone" dataKey="y" stroke={color} strokeWidth={2} fill="url(#priceGrad)" />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
 export function DonutViz({
   data,
   height = 260,

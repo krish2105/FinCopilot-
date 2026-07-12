@@ -206,6 +206,7 @@ Built phase-by-phase; the commit history tells the story.
 - [x] Phase 20 — teams, invites & RBAC (SSO/MFA need an external IdP)
 - [x] Phase 22 — re-retrieval loop + Exhibit 21 subsidiaries in GraphRAG
 - [x] Phase 23 — GTM (public /pricing, /docs, /trust, onboarding, PostHog)
+- [x] Phase 25 — retail data layer (live quotes + interactive price charts + earnings; FMP-primary, yfinance fallback, DB-independent)
 
 ### SaaS layer
 
