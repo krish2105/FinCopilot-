@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     fincopilot_tickers: str = "AAPL,MSFT,AMZN,TSLA,JPM,NVDA,META,GOOGL,EMAAR.AE,IHC.AE"
     fincopilot_offline_mode: bool = False
     log_level: str = "INFO"
+    # Production CORS: comma-separated allowed origins (the deployed frontend).
+    # Empty -> allow all (fine for local dev; set this in production).
+    frontend_origin: str = ""
+
+    @property
+    def cors_origins(self) -> list[str]:
+        origins = [o.strip() for o in self.frontend_origin.split(",") if o.strip()]
+        return origins or ["*"]
 
     # --- Ingestion ---
     # SEC EDGAR fair-access requires a descriptive User-Agent with contact info.

@@ -5,8 +5,14 @@
 > returns a **fully cited** answer — or honestly says **"insufficient evidence."**
 > Built entirely on free-tier infrastructure.
 
-<!-- Live URLs are added at the end of Phase 8 -->
-**Live demo:** _coming in Phase 8_ · **API:** _coming in Phase 8_
+[![CI](https://github.com/krish2105/FinCopilot-/actions/workflows/ci.yml/badge.svg)](https://github.com/krish2105/FinCopilot-/actions/workflows/ci.yml)
+
+<!-- After deploying (see scripts/deploy.md), replace the two placeholders below. -->
+**Live demo:** `https://<your-app>.vercel.app` · **API:** `https://<your-api>.onrender.com`
+
+> Deploy is one-blueprint-per-service and fully wired: **Vercel** (frontend) +
+> **Render** (`render.yaml`) + **Supabase** (pgvector). Step-by-step:
+> [scripts/deploy.md](scripts/deploy.md).
 
 ---
 
@@ -189,7 +195,7 @@ Built phase-by-phase; the commit history tells the story.
 - [x] Phase 5 — Self-RAG gate + refusal + audit log
 - [x] Phase 6 — premium frontend + Supabase Auth
 - [x] Phase 7 — RAGAS evaluation
-- [ ] Phase 8 — deploy (Vercel + Render + Supabase) + CI
+- [x] Phase 8 — deploy config (Vercel + Render + Supabase) + green CI
 
 ## Disclaimer
 

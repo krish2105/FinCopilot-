@@ -23,7 +23,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tightened to the deployed frontend origin in Phase 8
+    allow_origins=settings.cors_origins,  # set FRONTEND_ORIGIN in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

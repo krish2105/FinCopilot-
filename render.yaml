@@ -1,0 +1,35 @@
+# Render Blueprint — one-click backend deploy.
+# In Render: New + → Blueprint → connect this GitHub repo. Render reads this file,
+# creates the service, and auto-deploys on every push to main.
+# Fill the `sync: false` env vars in the Render dashboard (they're secrets).
+services:
+  - type: web
+    name: fincopilot-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: FINCOPILOT_TICKERS
+        value: AAPL,MSFT,AMZN,TSLA,JPM,NVDA,META,GOOGL,EMAAR.AE,IHC.AE
+      - key: FINCOPILOT_EMBED_BACKEND
+        value: auto
+      - key: EDGAR_USER_AGENT
+        value: FinCopilot research your-email@example.com
+      # --- Secrets: set these in the Render dashboard ---
+      - key: FRONTEND_ORIGIN # e.g. https://fincopilot.vercel.app
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: DATABASE_URL # Supabase Postgres connection string (pgvector enabled)
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
