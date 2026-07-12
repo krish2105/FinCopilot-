@@ -126,11 +126,13 @@ FinCopilot is **not a prototype**. It's ~6,800 LOC of backend across 20+ modules
 - **Acceptance:** a PR that drops faithfulness/context-hit below baseline fails CI. ✓
 - _Key-gated (do later):_ Langfuse tracing + Sentry (already guarded; flip on with keys).
 
-### Phase 29 — Monetization foundations · 3–5 days · $0 (Stripe test mode)
+### Phase 29 — Monetization foundations · ✅ DONE (keyless parts, 2026-07-13) · $0
 **Goal:** the SaaS skeleton that lets you charge later.
-- Activate Stripe (test mode) checkout for Free/Pro; surface usage metering in-app.
-- Legal pack: ToS, Privacy Policy, DPA, subprocessor list; "no training on your data" statement; EU AI Act Art. 50 labels.
-- **Acceptance:** a user can hit a quota, see it, and "upgrade" through Stripe test checkout.
+- ✅ **Legal pack** (`frontend/app/legal/*`): Terms, Privacy Policy, DPA (GDPR Art. 28), and a live Subprocessors table — shared `LegalShell`, cross-linked, linked from /trust.
+- ✅ **"Your data is not used to train models"** stated explicitly in Privacy + DPA.
+- ✅ **EU AI Act Art. 50 transparency**: an "AI-generated" chip on every answer + disclosure in Terms.
+- ⏸️ **Stripe checkout** — deferred (needs `STRIPE_*` keys; billing code already guarded/wired). Do tomorrow: add keys → test-mode checkout lights up.
+- **Acceptance (revised):** legal + transparency shipped; billing activates on key drop.
 
 ### Phase 30 — Growth loop · ongoing · $0
 **Goal:** something that compounds.

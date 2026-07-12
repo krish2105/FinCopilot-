@@ -210,6 +210,7 @@ Built phase-by-phase; the commit history tells the story.
 - [x] Phase 26 — RAG quality leap (Contextual Retrieval on embeddings + BM25; exact-arithmetic calculator + faithfulness guardrail)
 - [x] Phase 27 — consumer UX (shareable answer permalinks, cold-start masking + keep-warm ping, mobile polish)
 - [x] Phase 28 — eval-as-CI-gate (PR-blocking quality thresholds) + public /status page
+- [x] Phase 29 — legal pack (Terms/Privacy/DPA/Subprocessors) + EU AI Act "AI-generated" label + "no-training" statement (Stripe activation pending keys)
 
 ### SaaS layer
 

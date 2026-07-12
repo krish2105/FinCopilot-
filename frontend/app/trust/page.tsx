@@ -79,11 +79,16 @@ export default function TrustPage() {
       </section>
 
       <footer className="border-t border-border/60">
-        <div className="container flex items-center justify-between py-8">
+        <div className="container flex flex-wrap items-center justify-between gap-4 py-8">
           <Wordmark />
-          <Link href="/docs" className="text-xs text-muted-foreground hover:text-foreground">
-            Read the docs →
-          </Link>
+          <nav className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+            <Link href="/legal/terms" className="hover:text-foreground">Terms</Link>
+            <Link href="/legal/privacy" className="hover:text-foreground">Privacy</Link>
+            <Link href="/legal/dpa" className="hover:text-foreground">DPA</Link>
+            <Link href="/legal/subprocessors" className="hover:text-foreground">Subprocessors</Link>
+            <Link href="/status" className="hover:text-foreground">Status</Link>
+            <Link href="/docs" className="hover:text-foreground">Docs</Link>
+          </nav>
         </div>
       </footer>
     </div>
