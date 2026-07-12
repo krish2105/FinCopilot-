@@ -211,6 +211,7 @@ Built phase-by-phase; the commit history tells the story.
 - [x] Phase 27 — consumer UX (shareable answer permalinks, cold-start masking + keep-warm ping, mobile polish)
 - [x] Phase 28 — eval-as-CI-gate (PR-blocking quality thresholds) + public /status page
 - [x] Phase 29 — legal pack (Terms/Privacy/DPA/Subprocessors) + EU AI Act "AI-generated" label + "no-training" statement (Stripe activation pending keys)
+- [x] Phase 30 — growth loop (SEO answer pages /a/[q], /explore catalog, sitemap + robots) (email/analytics pending keys)
 
 ### SaaS layer
 

@@ -134,11 +134,13 @@ FinCopilot is **not a prototype**. It's ~6,800 LOC of backend across 20+ modules
 - ⏸️ **Stripe checkout** — deferred (needs `STRIPE_*` keys; billing code already guarded/wired). Do tomorrow: add keys → test-mode checkout lights up.
 - **Acceptance (revised):** legal + transparency shipped; billing activates on key drop.
 
-### Phase 30 — Growth loop · ongoing · $0
+### Phase 30 — Growth loop · ✅ DONE (keyless parts, 2026-07-13) · $0
 **Goal:** something that compounds.
-- Public shareable answer pages (SEO), "answer of the day," PostHog funnels (already wired).
-- A weekly "earnings recap" email for watchlisted tickers (reuses alert backend).
-- **Acceptance:** shared answer pages are crawlable and drive return visits.
+- ✅ **SEO-crawlable public answer pages** (`frontend/app/a/[q]/page.tsx`): server-rendered cited answers with per-page `generateMetadata` (title/description/OG); graceful fallback when the backend is cold; CTA into the live workspace.
+- ✅ **Explore page** (`/explore`): curated question catalog that internally links to the answer pages; linked from the marketing nav.
+- ✅ **`sitemap.xml` + `robots.txt`** (`app/sitemap.ts`, `app/robots.ts`): indexes marketing + answer pages, disallows private app routes.
+- ⏸️ **Weekly earnings-recap email** — deferred (needs an email provider key). PostHog funnels already wired (needs key).
+- **Acceptance:** answer pages are crawlable, internally linked, and drive visitors into the workspace. ✓
 
 ### Phase 31+ — Upmarket / enterprise (DEFERRED — needs $ + time)
 Start only if you decide to sell to firms: SOC 2 gap assessment, SSO/SCIM, data residency, BYOK, 99.95% SLA + DR, pen-testing, ISO 27001. **Do not build these now** — they add zero value to a retail launch and burn your sprint.
