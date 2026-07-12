@@ -38,6 +38,25 @@ class Settings(BaseSettings):
     fincopilot_offline_mode: bool = False
     log_level: str = "INFO"
 
+    # --- Ingestion ---
+    # SEC EDGAR fair-access requires a descriptive User-Agent with contact info.
+    edgar_user_agent: str = "FinCopilot research fincopilot@example.com"
+    # Where BM25 index / local vector store / raw docs live (gitignored).
+    data_dir: str = "data"
+    # Embedding backend: "auto" | "gemini" | "local" | "hash".
+    #   auto  -> gemini if key present and not offline, else local
+    #   local -> sentence-transformers bge-small (falls back to hash if unavailable)
+    #   hash  -> deterministic hashing embedder (CI/tests: no torch, no network)
+    fincopilot_embed_backend: str = "auto"
+    # Chunking (token estimates use ~4 chars/token).
+    chunk_target_tokens: int = 512
+    chunk_overlap_tokens: int = 64
+    # Pseudo-page size in characters for page-level citations in HTML filings.
+    page_char_size: int = 3000
+    # Ingestion volume caps (keep free tiers happy).
+    max_filings_per_type: int = 2
+    max_news_per_ticker: int = 10
+
     @property
     def tickers(self) -> list[str]:
         return [t.strip().upper() for t in self.fincopilot_tickers.split(",") if t.strip()]

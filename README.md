@@ -54,7 +54,20 @@ See [docs/architecture.md](docs/architecture.md), [DECISIONS.md](DECISIONS.md), 
 ```bash
 cp .env.example .env      # fill in free-tier keys
 docker compose up         # backend + frontend
+
+# Ingest real filings/market/news (runs fully offline with local embeddings):
+cd backend
+python -m src.ingestion.run --tickers AAPL MSFT --offline
+# then inspect what's searchable:
+curl localhost:8000/corpus/stats
 ```
+
+The ingestion pipeline (`backend/src/ingestion`) fetches **real** SEC EDGAR
+filings + yfinance fundamentals + GDELT news, parses them with page/section
+tracking, chunks structure-aware (tables kept intact), embeds, and writes to the
+vector store (Supabase pgvector, or a local SQLite store when no `DATABASE_URL`)
+plus a BM25 index. It is idempotent — re-running an unchanged corpus embeds
+nothing new.
 
 > Full run instructions and real RAGAS evaluation numbers are added as later phases
 > land. This README is intentionally a stub during Phase 0.
@@ -64,7 +77,7 @@ docker compose up         # backend + frontend
 Built phase-by-phase; the commit history tells the story.
 
 - [x] Phase 0 — repo scaffold, config, CI skeleton, GitHub remote
-- [ ] Phase 1 — ingestion (EDGAR + market + news → pgvector + BM25)
+- [x] Phase 1 — ingestion (EDGAR + market + news → pgvector + BM25)
 - [ ] Phase 2 — advanced RAG (hybrid + reranker + citations)
 - [ ] Phase 3 — agents (LangGraph orchestrator + specialists + provider router)
 - [ ] Phase 4 — adaptive routing + GraphRAG
