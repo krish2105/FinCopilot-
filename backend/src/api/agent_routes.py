@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from src.agents.orchestrator import get_agent_graph
 from src.agents.schemas import AgentAnswer
 from src.auth.principal import Principal, get_principal
+from src.billing.quota import enforce_query_quota
 from src.db.database import get_db
 from src.tenancy import repo
 
@@ -31,6 +32,10 @@ def ask(req: AskRequest, principal: Principal = Depends(get_principal)) -> Agent
     """Orchestrator → Researcher → Analyst → Compliance → (Viz → Synthesis | Refuse)
     → Self-RAG gate, scoped to the caller's accessible workspaces."""
     db = get_db()
+
+    # Enforce the org's monthly query quota before doing expensive work.
+    org = repo.get_org(db, principal.org_id)
+    enforce_query_quota(db, principal.org_id, org.plan if org else "free")
 
     # Resolve the workspace scope (always includes the shared public corpus).
     if req.workspace_id:

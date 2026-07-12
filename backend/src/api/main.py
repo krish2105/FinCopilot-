@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.agent_routes import router as agent_router
+from src.api.billing_routes import router as billing_router
 from src.api.retrieval_routes import router as retrieval_router
 from src.api.workspace_routes import router as workspace_router
 from src.config.settings import get_settings
@@ -33,6 +34,7 @@ app.add_middleware(
 app.include_router(retrieval_router)
 app.include_router(agent_router)
 app.include_router(workspace_router)
+app.include_router(billing_router)
 
 
 @app.get("/health")
@@ -46,7 +48,7 @@ def root() -> dict[str, object]:
     return {
         "name": "FinCopilot API",
         "version": app.version,
-        "phase": "10 — multi-tenancy + data rooms",
+        "phase": "11 — billing + metering",
         "tickers": settings.tickers,
         "disclaimer": "Informational research only. Not investment advice.",
     }

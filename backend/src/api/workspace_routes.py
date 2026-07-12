@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from src.auth.principal import Principal, get_principal
+from src.billing.quota import enforce_document_quota
 from src.db.database import get_db
 from src.ingestion.upload import UploadError, ingest_upload
 from src.retrieval.retriever import get_retriever
@@ -56,6 +57,8 @@ async def upload_document(
 ) -> dict:
     db = get_db()
     _owned_workspace(db, principal, workspace_id)
+    org = repo.get_org(db, principal.org_id)
+    enforce_document_quota(db, principal.org_id, org.plan if org else "free")
     data = await file.read()
     doc = repo.create_document(
         db,
