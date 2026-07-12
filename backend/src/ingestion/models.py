@@ -72,6 +72,9 @@ class Chunk(BaseModel):
     text: str
     metadata: SourceMetadata
     token_estimate: int = 0
+    # Contextual Retrieval (Phase 26): a short situating blurb prepended to `text`
+    # before embedding/BM25 (not shown in citations). Does not affect chunk_id.
+    context: str = ""
     embedding: list[float] | None = Field(default=None, repr=False)
 
     @staticmethod

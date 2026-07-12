@@ -80,10 +80,13 @@ def _embed_and_store(
     stats.chunks_total += len(chunks)
     stats.chunks_skipped += len(chunks) - len(new_chunks)
 
+    from src.ingestion.contextualize import contextual_text
+
     batch = 32
     for i in range(0, len(new_chunks), batch):
         window = new_chunks[i : i + batch]
-        vectors = embedder.embed([c.text for c in window])
+        # Contextual Retrieval: embed the situating context + text (Phase 26).
+        vectors = embedder.embed([contextual_text(c.text, c.context) for c in window])
         for c, v in zip(window, vectors, strict=True):
             c.embedding = v
         store.upsert(window)

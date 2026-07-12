@@ -34,11 +34,15 @@ class BM25Index:
     # --- build / persist ---
     @classmethod
     def build(cls, chunks: list[Chunk], path: str) -> BM25Index:
+        from src.ingestion.contextualize import context_for, contextual_text
+
         idx = cls(path)
         idx._records = [
             {
                 "chunk_id": c.chunk_id,
-                "tokens": tokenize(c.text),
+                # Contextual Retrieval (Phase 26): index the situating context too,
+                # so lexical search also benefits. Display text stays original.
+                "tokens": tokenize(contextual_text(c.text, context_for(c.metadata, c.context))),
                 "text": c.text,
                 "ticker": c.metadata.ticker,
                 "doc_type": c.metadata.doc_type.value,

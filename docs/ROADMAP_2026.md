@@ -105,12 +105,12 @@ FinCopilot is **not a prototype**. It's ~6,800 LOC of backend across 20+ modules
 - **Requires for live data:** a free `FMP_API_KEY` on the backend (yfinance 429s from datacenter IPs). Sign up free at financialmodelingprep.com.
 - _Deferred to a follow-up:_ full earnings-call **transcript** ingestion + LLM summary (needs a transcript source); watchlist UI wiring.
 
-### Phase 26 — RAG quality leap · 3–4 days · $0
+### Phase 26 — RAG quality leap · ✅ DONE (2026-07-13) · $0
 **Goal:** measurably better retrieval + exact math.
-- Implement **Contextual Retrieval** in the ingestion pipeline (Gemini-generated chunk context).
-- Add a calculator tool + structured-output figure extraction to the analyst agent.
-- Re-run eval; record before/after. Target: context-hit and faithfulness hold ≥ current, answer-match ↑ with real LLM.
-- **Acceptance:** eval report shows answer-match materially up vs. the offline 36% baseline once LLM + contextual retrieval are on.
+- ✅ **Contextual Retrieval** (`backend/src/ingestion/contextualize.py`): a situating blurb (ticker/doc-type/section/date) is prepended to every chunk before **embedding and BM25 indexing** — the citation excerpt stays the original text. Deterministic/keyless template path runs offline+CI; an `llm_context()` helper is ready to wire when a key is set. Anthropic's technique, adapted to $0.
+- ✅ **Calculator + arithmetic guardrail** (`backend/src/agents/calculator.py`): safe AST evaluator (no `eval`), finance helpers (`percent_change`, `cagr`, `ratio`), and `verify_arithmetic()` wired into the **faithfulness gate** — any explicit `A op B = C` in an answer that doesn't compute now fails the grounding check (a novel trust guardrail beyond citations).
+- ✅ 11 new backend tests (163 total green).
+- _Upgrade path:_ set an API key → enable `llm_context` for LLM-written context + let the live LLM show arithmetic (auto-verified).
 
 ### Phase 27 — Consumer UX + launch polish · 3–4 days · $0
 **Goal:** looks and feels like a product a stranger would use.

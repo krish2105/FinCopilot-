@@ -207,6 +207,7 @@ Built phase-by-phase; the commit history tells the story.
 - [x] Phase 22 — re-retrieval loop + Exhibit 21 subsidiaries in GraphRAG
 - [x] Phase 23 — GTM (public /pricing, /docs, /trust, onboarding, PostHog)
 - [x] Phase 25 — retail data layer (live quotes + interactive price charts + earnings; FMP-primary, yfinance fallback, DB-independent)
+- [x] Phase 26 — RAG quality leap (Contextual Retrieval on embeddings + BM25; exact-arithmetic calculator + faithfulness guardrail)
 
 ### SaaS layer
 

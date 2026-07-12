@@ -21,6 +21,8 @@ def _est_tokens(text: str) -> int:
 
 
 def _make_chunk(doc: RawDocument, text: str, page: int, section: str) -> Chunk:
+    from src.ingestion.contextualize import template_context
+
     md = doc.metadata.model_copy(update={"page": page, "section": section})
     chunk_id = Chunk.make_chunk_id(doc.doc_id, text)
     return Chunk(
@@ -29,6 +31,7 @@ def _make_chunk(doc: RawDocument, text: str, page: int, section: str) -> Chunk:
         text=text,
         metadata=md,
         token_estimate=_est_tokens(text),
+        context=template_context(md),
     )
 
 

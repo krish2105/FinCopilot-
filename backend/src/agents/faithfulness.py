@@ -85,8 +85,17 @@ def verify(
         if core and core not in evidence_digits:
             ungrounded_numbers.append(token)
 
+    # --- exact-arithmetic guardrail (Phase 26) ---
+    # Any explicit "A op B = C" the answer states must actually compute to C.
+    from src.agents.calculator import verify_arithmetic
+
+    arithmetic_errors = [
+        f"arithmetic error: {e['expression']} (correct: {e['correct']})"
+        for e in verify_arithmetic(answer)
+    ]
+
     # --- deterministic semantic grounding ---
-    unsupported: list[str] = []
+    unsupported: list[str] = list(arithmetic_errors)
     sentences = [s.strip() for s in _SENTENCE_SPLIT.split(answer) if s.strip()]
     for sent in sentences:
         clean = _MARKER_RE.sub("", sent).strip()
