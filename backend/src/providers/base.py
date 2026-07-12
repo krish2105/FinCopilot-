@@ -30,6 +30,7 @@ class LLMResponse:
     model: str
     latency_ms: int = 0
     cached: bool = False
+    tokens: int = 0  # total tokens (prompt + completion) when the provider reports it
 
 
 class Provider:

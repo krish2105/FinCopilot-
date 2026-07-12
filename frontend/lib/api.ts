@@ -224,6 +224,46 @@ export const api = {
         workspace_id: workspaceId || null,
       }),
     }),
+  askStream: async (
+    query: string,
+    tickers: string[] | undefined,
+    workspaceId: string | undefined,
+    on: {
+      onStep?: (label: string) => void;
+      onToken?: (text: string) => void;
+      onAnswer?: (a: AgentAnswer) => void;
+    },
+  ) => {
+    const auth = await authHeaders();
+    const res = await fetch(`${API_BASE}/ask/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...auth },
+      body: JSON.stringify({
+        query,
+        tickers: tickers?.length ? tickers : null,
+        workspace_id: workspaceId || null,
+      }),
+    });
+    if (!res.ok || !res.body) throw new Error(`API ${res.status}`);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split("\n\n");
+      buf = parts.pop() || "";
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith("data:")) continue;
+        const ev = JSON.parse(line.slice(5).trim());
+        if (ev.event === "step") on.onStep?.(ev.label);
+        else if (ev.event === "token") on.onToken?.(ev.text);
+        else if (ev.event === "answer") on.onAnswer?.(ev.answer as AgentAnswer);
+      }
+    }
+  },
   // workspaces / data rooms
   workspaces: () => req<{ workspaces: Workspace[] }>("/workspaces"),
   createWorkspace: (name: string) =>

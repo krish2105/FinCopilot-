@@ -55,4 +55,7 @@ class GroqProvider(Provider):
             raise ProviderError(f"groq/{self.model}: {exc}") from exc
         latency = int((time.monotonic() - start) * 1000)
         text = resp.choices[0].message.content or ""
-        return LLMResponse(text=text, provider=self.name, model=self.model, latency_ms=latency)
+        tokens = getattr(getattr(resp, "usage", None), "total_tokens", 0) or 0
+        return LLMResponse(
+            text=text, provider=self.name, model=self.model, latency_ms=latency, tokens=tokens
+        )

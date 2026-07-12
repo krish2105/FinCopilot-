@@ -60,4 +60,10 @@ class GeminiProvider(Provider):
             raise ProviderError(f"gemini/{self.model}: {exc}") from exc
         latency = int((time.monotonic() - start) * 1000)
         text = resp.text or ""
-        return LLMResponse(text=text, provider=self.name, model=self.model, latency_ms=latency)
+        tokens = 0
+        usage = getattr(resp, "usage_metadata", None)
+        if usage is not None:
+            tokens = getattr(usage, "total_token_count", 0) or 0
+        return LLMResponse(
+            text=text, provider=self.name, model=self.model, latency_ms=latency, tokens=tokens
+        )

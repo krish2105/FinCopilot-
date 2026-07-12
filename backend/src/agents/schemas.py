@@ -82,6 +82,7 @@ class ProviderCall(BaseModel):
     model: str
     cached: bool = False
     latency_ms: int = 0
+    tokens: int = 0
 
 
 class AgentAnswer(BaseModel):

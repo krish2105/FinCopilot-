@@ -23,4 +23,5 @@ class StubProvider(Provider):
             # Deterministic, non-fabricating: echo intent without inventing facts.
             first_line = user.strip().splitlines()[0] if user.strip() else ""
             text = f"[offline stub] {first_line[:200]}"
-        return LLMResponse(text=text, provider=self.name, model=self.model)
+        est_tokens = (sum(len(m.content) for m in messages) + len(text)) // 4
+        return LLMResponse(text=text, provider=self.name, model=self.model, tokens=est_tokens)

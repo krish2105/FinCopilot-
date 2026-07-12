@@ -7,7 +7,10 @@ persisted to the conversation history.
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from src.agents.orchestrator import get_agent_graph
@@ -40,18 +43,50 @@ def ask(req: AskRequest, principal: Principal = Depends(get_principal)) -> Agent
     enforce_query_quota(db, principal.org_id, org.plan if org else "free")
 
     # Resolve the workspace scope (always includes the shared public corpus).
-    if req.workspace_id:
-        ws = repo.get_workspace(db, req.workspace_id)
-        if not ws or ws.org_id != principal.org_id:
-            raise HTTPException(status_code=404, detail="Workspace not found")
-        scope = [req.workspace_id, repo.PUBLIC_WORKSPACE]
-    else:
-        scope = repo.accessible_workspace_ids(db, principal.org_id)
-
+    scope = _resolve_scope(db, principal, req)
     answer = get_agent_graph().run(req.query, tickers=req.tickers, workspaces=scope)
 
     _persist(db, principal, req, answer)
     return answer
+
+
+def _resolve_scope(db, principal: Principal, req: AskRequest) -> list[str]:
+    if req.workspace_id:
+        ws = repo.get_workspace(db, req.workspace_id)
+        if not ws or ws.org_id != principal.org_id:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        return [req.workspace_id, repo.PUBLIC_WORKSPACE]
+    return repo.accessible_workspace_ids(db, principal.org_id)
+
+
+@router.post("/ask/stream")
+def ask_stream(req: AskRequest, principal: Principal = Depends(get_principal)) -> StreamingResponse:
+    """Server-Sent Events: agent-step events, streamed answer tokens, then the
+    full cited AgentAnswer. Same tenant scoping, quota, and persistence as /ask."""
+    db = get_db()
+    get_limiter().check(principal.user_id)
+    org = repo.get_org(db, principal.org_id)
+    enforce_query_quota(db, principal.org_id, org.plan if org else "free")
+    scope = _resolve_scope(db, principal, req)
+
+    def gen():
+        answer: AgentAnswer | None = None
+        for ev in get_agent_graph().stream(req.query, tickers=req.tickers, workspaces=scope):
+            if ev["event"] == "answer":
+                answer = ev["answer"]
+                payload = {"event": "answer", "answer": answer.model_dump()}
+            else:
+                payload = ev
+            yield f"data: {json.dumps(payload)}\n\n"
+        if answer is not None:
+            _persist(db, principal, req, answer)
+        yield 'data: {"event": "done"}\n\n'
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 def _persist(db, principal: Principal, req: AskRequest, answer: AgentAnswer) -> None:
@@ -67,7 +102,7 @@ def _persist(db, principal: Principal, req: AskRequest, answer: AgentAnswer) -> 
     import uuid
     from datetime import UTC, datetime
 
-    tokens = sum(p.latency_ms for p in answer.provider_trace)  # proxy until token counts wired
+    tokens = sum(p.tokens for p in answer.provider_trace)  # real token usage
     db.execute(
         "INSERT INTO usage_events (id, org_id, user_id, ts, kind, tokens, providers) "
         "VALUES (?, ?, ?, ?, 'query', ?, ?)",

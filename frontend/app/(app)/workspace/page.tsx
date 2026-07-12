@@ -33,6 +33,8 @@ export default function WorkspacePage() {
   const [input, setInput] = useState("");
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [loading, setLoading] = useState(false);
+  const [streamStep, setStreamStep] = useState("");
+  const [streamText, setStreamText] = useState("");
   const [activeCite, setActiveCite] = useState<Citation | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -58,9 +60,15 @@ export default function WorkspacePage() {
     setExchanges((e) => [...e, { id, query }]);
     setInput("");
     setLoading(true);
+    setStreamStep("");
+    setStreamText("");
     try {
-      const answer = await api.ask(query, selected, roomId || undefined);
-      setExchanges((e) => e.map((x) => (x.id === id ? { ...x, answer } : x)));
+      await api.askStream(query, selected, roomId || undefined, {
+        onStep: (label) => setStreamStep(label),
+        onToken: (t) => setStreamText((s) => s + t),
+        onAnswer: (answer) =>
+          setExchanges((e) => e.map((x) => (x.id === id ? { ...x, answer } : x))),
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Request failed";
       setExchanges((e) => e.map((x) => (x.id === id ? { ...x, error: msg } : x)));
@@ -69,6 +77,8 @@ export default function WorkspacePage() {
       });
     } finally {
       setLoading(false);
+      setStreamStep("");
+      setStreamText("");
     }
   }
 
@@ -135,7 +145,7 @@ export default function WorkspacePage() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
                 >
-                  <AgentProgress />
+                  <AgentProgress currentStep={streamStep} streamText={streamText} />
                 </motion.div>
               )}
             </AnimatePresence>

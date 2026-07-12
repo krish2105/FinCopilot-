@@ -28,7 +28,6 @@ from src.agents import (
 from src.agents.prompts import SYNTHESIS_SYSTEM, format_evidence, format_findings
 from src.agents.schemas import AgentAnswer, FaithfulnessVerdict, ProviderCall
 from src.agents.state import AgentState
-from src.audit.log import AuditLog, AuditRecord, audit_path
 from src.config.settings import Settings, get_settings
 from src.providers.router import ProviderRouter, get_router
 from src.retrieval import agentic, graphrag
@@ -53,7 +52,6 @@ class AgentGraph:
         # May be None before the first ingestion; relationship route then falls
         # back to hybrid search.
         self.entity_graph = entity_graph or EntityGraph.load(graph_path())
-        self.audit_log = AuditLog(audit_path(self.settings))
         self.graph = self._build()
 
     # --- graph wiring ---
@@ -208,9 +206,47 @@ class AgentGraph:
             {"query": query, "tickers": tickers, "workspaces": workspaces, "provider_trace": []}
         )
         latency_ms = int((time.monotonic() - start) * 1000)
-        answer = self._to_answer(query, final, latency_ms)
-        self._write_audit(answer, tickers)
-        return answer
+        return self._to_answer(query, final, latency_ms)
+
+    _STEP_LABELS = {
+        "classify": "Classifying & routing",
+        "research": "Researching evidence",
+        "analyze": "Analyzing figures",
+        "comply": "Checking compliance",
+        "visualize": "Building visualization",
+        "synthesize": "Synthesizing answer",
+        "verify": "Verifying faithfulness",
+        "refuse": "Insufficient evidence",
+    }
+
+    def stream(self, query: str, tickers=None, workspaces=None):
+        """Generator of SSE events: one 'step' per agent node, streamed answer
+        tokens, then a final 'answer' with the full AgentAnswer.
+
+        (Live per-token LLM streaming is a further enhancement; here we stream the
+        synthesized answer word-by-word for a responsive UX in every mode.)"""
+        start = time.monotonic()
+        acc: dict = {
+            "query": query,
+            "tickers": tickers,
+            "workspaces": workspaces,
+            "provider_trace": [],
+        }
+        for update in self.graph.stream(acc, stream_mode="updates"):
+            for node, delta in update.items():
+                label = self._STEP_LABELS.get(node, node)
+                yield {"event": "step", "node": node, "label": label}
+                for k, v in (delta or {}).items():
+                    if k == "provider_trace":
+                        acc["provider_trace"] = acc.get("provider_trace", []) + (v or [])
+                    else:
+                        acc[k] = v
+
+        latency_ms = int((time.monotonic() - start) * 1000)
+        answer = self._to_answer(query, acc, latency_ms)
+        for word in answer.answer.split(" "):
+            yield {"event": "token", "text": word + " "}
+        yield {"event": "answer", "answer": answer}
 
     def _to_answer(self, query: str, final: dict, latency_ms: int) -> AgentAnswer:
         retrieval = final.get("retrieval")
@@ -234,23 +270,6 @@ class AgentGraph:
             embed_backend=retrieval.embed_backend if retrieval else "",
             evidence_count=len(retrieval.chunks) if retrieval else 0,
             latency_ms=latency_ms,
-        )
-
-    def _write_audit(self, ans: AgentAnswer, tickers: list[str] | None) -> None:
-        providers = sorted({f"{c.provider}:{c.model}" for c in ans.provider_trace})
-        self.audit_log.record(
-            AuditRecord(
-                query=ans.query,
-                tickers=tickers or [],
-                planned_route=ans.planned_route,
-                route=ans.route,
-                verdict=ans.verdict,
-                evidence_count=ans.evidence_count,
-                sources=[c.label() for c in ans.citations],
-                providers=providers,
-                faithfulness_score=ans.faithfulness.score,
-                latency_ms=ans.latency_ms,
-            )
         )
 
 

@@ -80,13 +80,24 @@ def test_faithfulness_gate_passes_grounded_answer(settings, seeded_retriever):
     assert ans.faithfulness.score >= 0.8
 
 
-def test_run_writes_audit_record(settings, seeded_retriever):
-    g = _graph(settings, seeded_retriever)
-    assert g.audit_log.count() == 0
-    ans = g.run("What were Apple's total net sales?", tickers=["AAPL"])
-    assert g.audit_log.count() == 1
-    rec = g.audit_log.recent()[0]
-    assert rec.query == ans.query
-    assert rec.route == ans.route
-    assert rec.verdict == ans.verdict
-    assert rec.latency_ms >= 0
+def test_ask_writes_tenant_scoped_db_audit(monkeypatch, settings, seeded_retriever):
+    """The /ask path records one tenant-scoped audit row in the DB."""
+    from fastapi.testclient import TestClient
+
+    import src.api.agent_routes as routes
+    from src.api.main import app
+    from src.auth.principal import DEMO_USER
+    from src.db.database import get_db
+    from src.tenancy import repo
+
+    graph = _graph(settings, seeded_retriever)
+    monkeypatch.setattr(routes, "get_agent_graph", lambda: graph)
+    resp = TestClient(app).post(
+        "/ask", json={"query": "What were Apple's total net sales?", "tickers": ["AAPL"]}
+    )
+    assert resp.status_code == 200
+
+    db = get_db()
+    org = db.query_one("SELECT org_id FROM users WHERE id = ?", (DEMO_USER,))["org_id"]
+    assert repo.audit_count(db, org) == 1
+    assert repo.recent_audit(db, org)[0]["route"] == resp.json()["route"]

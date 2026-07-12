@@ -93,7 +93,8 @@ class ProviderRouter:
         trace: list | None = None,
     ) -> str:
         if self.mode == "stub" and stub_text is not None:
-            self._record(trace, "stub", "stub-llm-v1", cached=False, latency_ms=0)
+            est = (len(prompt) + len(system or "") + len(stub_text)) // 4
+            self._record(trace, "stub", "stub-llm-v1", cached=False, latency_ms=0, tokens=est)
             return stub_text
         resp = self._complete(prompt, system, json_mode=False, trace=trace)
         return resp.text
@@ -113,7 +114,9 @@ class ProviderRouter:
         chain fails and a stub is provided, degrade gracefully to it.
         """
         if self.mode == "stub":
-            self._record(trace, "stub", "stub-llm-v1", cached=False, latency_ms=0)
+            self._record(
+                trace, "stub", "stub-llm-v1", cached=False, latency_ms=0, tokens=len(prompt) // 4
+            )
             return stub() if stub else schema()
 
         schema_json = json.dumps(schema.model_json_schema())
@@ -126,7 +129,9 @@ class ProviderRouter:
             try:
                 resp = self._call_provider(provider, full_prompt, system, json_mode=True)
                 obj = schema.model_validate_json(_extract_json(resp.text))
-                self._record(trace, resp.provider, resp.model, resp.cached, resp.latency_ms)
+                self._record(
+                    trace, resp.provider, resp.model, resp.cached, resp.latency_ms, resp.tokens
+                )
                 return obj
             except RateLimitError as exc:
                 last_err = exc
@@ -149,7 +154,9 @@ class ProviderRouter:
         for provider in self.providers:
             try:
                 resp = self._call_provider(provider, prompt, system, json_mode)
-                self._record(trace, resp.provider, resp.model, resp.cached, resp.latency_ms)
+                self._record(
+                    trace, resp.provider, resp.model, resp.cached, resp.latency_ms, resp.tokens
+                )
                 return resp
             except RateLimitError as exc:
                 last_err = exc
@@ -195,10 +202,16 @@ class ProviderRouter:
         return hashlib.sha256(raw.encode()).hexdigest()
 
     @staticmethod
-    def _record(trace, provider, model, cached, latency_ms) -> None:
+    def _record(trace, provider, model, cached, latency_ms, tokens=0) -> None:
         if trace is not None:
             trace.append(
-                {"provider": provider, "model": model, "cached": cached, "latency_ms": latency_ms}
+                {
+                    "provider": provider,
+                    "model": model,
+                    "cached": cached,
+                    "latency_ms": latency_ms,
+                    "tokens": tokens,
+                }
             )
 
 
