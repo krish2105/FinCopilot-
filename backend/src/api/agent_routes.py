@@ -15,6 +15,7 @@ from src.agents.schemas import AgentAnswer
 from src.auth.principal import Principal, get_principal
 from src.billing.quota import enforce_query_quota
 from src.db.database import get_db
+from src.ops.ratelimit import get_limiter
 from src.tenancy import repo
 
 router = APIRouter(tags=["agents"])
@@ -32,6 +33,7 @@ def ask(req: AskRequest, principal: Principal = Depends(get_principal)) -> Agent
     """Orchestrator → Researcher → Analyst → Compliance → (Viz → Synthesis | Refuse)
     → Self-RAG gate, scoped to the caller's accessible workspaces."""
     db = get_db()
+    get_limiter().check(principal.user_id)
 
     # Enforce the org's monthly query quota before doing expensive work.
     org = repo.get_org(db, principal.org_id)
@@ -60,7 +62,8 @@ def _persist(db, principal: Principal, req: AskRequest, answer: AgentAnswer) -> 
         conv_id = conv.id
     repo.add_message(db, conv_id, "user", req.query)
     repo.add_message(db, conv_id, "assistant", answer.answer, answer.model_dump_json())
-    # Usage event (Phase 11 enforces quotas off these).
+
+    # Usage event (Phase 11 quotas) + tenant-scoped audit trail (Phase 12).
     import uuid
     from datetime import UTC, datetime
 
@@ -77,3 +80,4 @@ def _persist(db, principal: Principal, req: AskRequest, answer: AgentAnswer) -> 
             ",".join(sorted({p.provider for p in answer.provider_trace})),
         ),
     )
+    repo.write_audit(db, principal.org_id, principal.user_id, answer, req.tickers)

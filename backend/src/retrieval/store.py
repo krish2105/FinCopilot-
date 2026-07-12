@@ -41,6 +41,7 @@ class VectorStore:
     def upsert(self, chunks: list[Chunk]) -> int: ...
     def existing_ids(self, ids: list[str]) -> set[str]: ...
     def get_by_ids(self, ids: list[str]) -> list[Chunk]: ...
+    def delete_by_doc_id(self, doc_id: str) -> int: ...
     def count(self) -> int: ...
     def iter_all(self) -> list[Chunk]: ...
     def search(
@@ -185,6 +186,11 @@ class LocalVectorStore(VectorStore):
             q = f"SELECT * FROM chunks WHERE chunk_id IN ({','.join('?' * len(batch))})"
             out.extend(_row_to_chunk(dict(r)) for r in self.conn.execute(q, batch))
         return out
+
+    def delete_by_doc_id(self, doc_id: str) -> int:
+        cur = self.conn.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
+        self.conn.commit()
+        return cur.rowcount
 
     def count(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]

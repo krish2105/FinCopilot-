@@ -262,6 +262,48 @@ def add_message(
     return mid
 
 
+# --- audit (tenant-scoped) ---
+def write_audit(db: Database, org_id: str, user_id: str, answer, tickers: list[str] | None) -> None:
+    providers = sorted({f"{c.provider}:{c.model}" for c in answer.provider_trace})
+    db.execute(
+        "INSERT INTO audit (id, org_id, user_id, ts, query, tickers, planned_route, route, "
+        "verdict, evidence_count, sources, providers, faithfulness_score, latency_ms) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            _id("aud"),
+            org_id,
+            user_id,
+            _now(),
+            answer.query,
+            ",".join(tickers or []),
+            answer.planned_route,
+            answer.route,
+            answer.verdict,
+            answer.evidence_count,
+            " | ".join(c.label() for c in answer.citations),
+            ",".join(providers),
+            answer.faithfulness.score,
+            answer.latency_ms,
+        ),
+    )
+
+
+def recent_audit(db: Database, org_id: str, limit: int = 100) -> list[dict]:
+    rows = db.query(
+        "SELECT * FROM audit WHERE org_id = ? ORDER BY ts DESC LIMIT ?", (org_id, limit)
+    )
+    for r in rows:
+        r["tickers"] = r["tickers"].split(",") if r.get("tickers") else []
+        r["sources"] = r["sources"].split(" | ") if r.get("sources") else []
+        r["providers"] = r["providers"].split(",") if r.get("providers") else []
+    return rows
+
+
+def audit_count(db: Database, org_id: str) -> int:
+    row = db.query_one("SELECT COUNT(*) AS n FROM audit WHERE org_id = ?", (org_id,))
+    return int(row["n"]) if row else 0
+
+
 def list_messages(db: Database, conversation_id: str) -> list[Message]:
     rows = db.query(
         "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at", (conversation_id,)

@@ -114,6 +114,10 @@ class PgVectorStore(VectorStore):
         ).fetchall()
         return [self._row_to_chunk(r) for r in rows]
 
+    def delete_by_doc_id(self, doc_id: str) -> int:
+        cur = self.conn.execute("DELETE FROM chunks WHERE doc_id = %s", (doc_id,))
+        return cur.rowcount
+
     def count(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
 

@@ -28,6 +28,7 @@ def _isolate_singletons(tmp_path):
     API tests never touch the real ./data directory or bleed state across tests."""
     from src.agents import orchestrator as O
     from src.db import database
+    from src.ops import ratelimit as RL
     from src.providers import router as PR
     from src.retrieval import retriever as R
 
@@ -36,6 +37,7 @@ def _isolate_singletons(tmp_path):
     R.reset_retriever()
     O.reset_agent_graph()
     PR.reset_router()
+    RL.reset_limiter()
     yield
     database.reset_db()
 

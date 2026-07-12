@@ -93,9 +93,8 @@ def delete_document(doc_id: str, principal: Principal = Depends(get_principal)) 
     if not doc or doc.org_id != principal.org_id:
         raise HTTPException(status_code=404, detail="Document not found")
     repo.delete_document(db, doc_id)
-    # Note: chunk purge from the vector store is a background job (Phase 12); the
-    # record is removed immediately so it no longer appears in the data room.
-    return {"deleted": doc_id}
+    purged = get_retriever().store.delete_by_doc_id(doc_id)
+    return {"deleted": doc_id, "chunks_purged": purged}
 
 
 # ---- conversations ----

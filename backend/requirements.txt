@@ -37,3 +37,7 @@ lxml==5.3.0
 
 # --- Graph (Phase 4) ---
 networkx==3.4.2
+
+# --- Ops / observability (Phase 12, guarded) ---
+redis==5.2.1
+sentry-sdk==2.19.2

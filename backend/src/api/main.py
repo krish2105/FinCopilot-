@@ -6,16 +6,20 @@ added from Phase 3 onward.
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.agent_routes import router as agent_router
 from src.api.billing_routes import router as billing_router
 from src.api.retrieval_routes import router as retrieval_router
 from src.api.workspace_routes import router as workspace_router
+from src.auth.principal import Principal, get_principal
 from src.config.settings import get_settings
+from src.db.database import get_db
+from src.ops.observability import init_sentry
 
 settings = get_settings()
+init_sentry(settings)
 
 app = FastAPI(
     title="FinCopilot API",
@@ -43,12 +47,22 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/ready")
+def ready() -> dict[str, object]:
+    """Readiness probe: the metadata DB is reachable."""
+    try:
+        get_db().query_one("SELECT 1 AS ok")
+        return {"ready": True}
+    except Exception as exc:  # noqa: BLE001
+        return {"ready": False, "error": str(exc)}
+
+
 @app.get("/")
 def root() -> dict[str, object]:
     return {
         "name": "FinCopilot API",
         "version": app.version,
-        "phase": "11 — billing + metering",
+        "phase": "12 — ops + observability",
         "tickers": settings.tickers,
         "disclaimer": "Informational research only. Not investment advice.",
     }
@@ -105,10 +119,10 @@ def eval_results() -> dict[str, object]:
 
 
 @app.get("/audit")
-def audit(limit: int = 100) -> dict[str, object]:
-    """Recent audit trail: query · routes · sources · providers · verdict (Phase 5)."""
-    from src.audit.log import get_audit_log
+def audit(limit: int = 100, principal: Principal = Depends(get_principal)) -> dict[str, object]:
+    """Tenant-scoped audit trail: query · routes · sources · providers · verdict."""
+    from src.tenancy import repo
 
-    log = get_audit_log(settings)
-    records = log.recent(limit=limit)
-    return {"count": log.count(), "records": [r.model_dump() for r in records]}
+    db = get_db()
+    records = repo.recent_audit(db, principal.org_id, limit=limit)
+    return {"count": repo.audit_count(db, principal.org_id), "records": records}
