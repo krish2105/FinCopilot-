@@ -8,7 +8,7 @@ import os
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from src.auth.principal import Principal, get_principal
+from src.auth.principal import Principal, get_principal, require_role
 from src.billing.quota import enforce_document_quota
 from src.db.database import get_db
 from src.retrieval.retriever import get_retriever
@@ -37,6 +37,7 @@ def list_workspaces(principal: Principal = Depends(get_principal)) -> dict:
 
 @router.post("/workspaces")
 def create_workspace(body: CreateWorkspace, principal: Principal = Depends(get_principal)) -> dict:
+    require_role(principal, "member")  # viewers are read-only
     db = get_db()
     return repo.create_workspace(db, principal.org_id, body.name).model_dump()
 
@@ -55,6 +56,7 @@ async def upload_document(
     file: UploadFile = File(...),
     principal: Principal = Depends(get_principal),
 ) -> dict:
+    require_role(principal, "member")  # viewers are read-only
     db = get_db()
     _owned_workspace(db, principal, workspace_id)
     org = repo.get_org(db, principal.org_id)

@@ -56,6 +56,10 @@ _SCHEMA = [
     """CREATE TABLE IF NOT EXISTS watchlists (
         id TEXT PRIMARY KEY, org_id TEXT NOT NULL, ticker TEXT NOT NULL,
         last_accession TEXT, created_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS invites (
+        id TEXT PRIMARY KEY, org_id TEXT NOT NULL, email TEXT NOT NULL,
+        role TEXT DEFAULT 'member', token TEXT NOT NULL, status TEXT DEFAULT 'pending',
+        created_at TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS audit (
         id TEXT PRIMARY KEY, org_id TEXT, user_id TEXT, ts TEXT NOT NULL,
         query TEXT, tickers TEXT, planned_route TEXT, route TEXT, verdict TEXT,

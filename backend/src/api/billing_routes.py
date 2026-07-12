@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from src.auth.principal import Principal, get_principal
+from src.auth.principal import Principal, get_principal, require_role
 from src.billing import service
 from src.billing.plans import PLANS
 from src.billing.quota import usage_summary
@@ -43,6 +43,7 @@ def checkout(
     principal: Principal = Depends(get_principal),
     settings: Settings = Depends(get_settings),
 ) -> dict:
+    require_role(principal, "admin")
     url = service.create_checkout_session(
         settings, principal.org_id, body.plan_id, body.success_url, body.cancel_url
     )

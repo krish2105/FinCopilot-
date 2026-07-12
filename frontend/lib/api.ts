@@ -304,6 +304,37 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ rating, query }),
     }),
+  // team / RBAC
+  members: () =>
+    req<{
+      members: { id: string; email: string; role: string }[];
+      seats_used: number;
+      seats_limit: number;
+    }>("/org/members"),
+  invites: () =>
+    req<{ invites: { id: string; email: string; role: string }[] }>("/org/invites"),
+  invite: (email: string, role: string) =>
+    req<{ token: string; email: string }>("/org/invites", {
+      method: "POST",
+      body: JSON.stringify({ email, role }),
+    }),
+  revokeInvite: (id: string) =>
+    req<{ revoked: string }>(`/org/invites/${id}`, { method: "DELETE" }),
+  updateMember: (userId: string, role: string) =>
+    req(`/org/members/${userId}`, { method: "PATCH", body: JSON.stringify({ role }) }),
+  removeMember: (userId: string) =>
+    req(`/org/members/${userId}`, { method: "DELETE" }),
+  // API keys
+  apiKeys: () =>
+    req<{ keys: { id: string; name: string; prefix: string; last_used: string | null }[] }>(
+      "/api-keys",
+    ),
+  createApiKey: (name: string) =>
+    req<{ api_key: string; prefix: string }>("/api-keys", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  deleteApiKey: (id: string) => req(`/api-keys/${id}`, { method: "DELETE" }),
   corpusStats: () => req<CorpusStats>("/corpus/stats"),
   graphStats: () => req<GraphStats>("/graph/stats"),
   audit: (limit = 100) =>

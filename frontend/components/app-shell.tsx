@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Menu,
   MessagesSquare,
+  Users,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -25,6 +26,7 @@ const NAV = [
   { href: "/dashboard", label: "Ticker Dashboard", icon: LayoutDashboard },
   { href: "/audit", label: "Audit Log", icon: ClipboardList },
   { href: "/evaluation", label: "Evaluation", icon: GaugeCircle },
+  { href: "/team", label: "Team & Access", icon: Users },
   { href: "/billing", label: "Billing", icon: CreditCard },
 ];
 

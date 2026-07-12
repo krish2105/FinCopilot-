@@ -33,6 +33,18 @@ class Principal(BaseModel):
     is_demo: bool = False
 
 
+# Role hierarchy for RBAC. Higher rank = more privilege. API keys map to "service".
+ROLE_RANK = {"viewer": 0, "member": 1, "service": 2, "admin": 2, "owner": 3}
+
+
+def require_role(principal: Principal, min_role: str) -> None:
+    """Raise 403 unless the principal's role meets `min_role`."""
+    if ROLE_RANK.get(principal.role, 0) < ROLE_RANK.get(min_role, 99):
+        raise HTTPException(
+            status_code=403, detail=f"Requires '{min_role}' role (you are '{principal.role}')."
+        )
+
+
 def _verify_jwt(token: str, secret: str) -> dict | None:
     try:
         import jwt

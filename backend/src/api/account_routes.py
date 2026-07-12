@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from src.auth.principal import Principal, get_principal
+from src.auth.principal import Principal, get_principal, require_role
 from src.db.database import get_db
 from src.retrieval.retriever import get_retriever
 from src.tenancy import repo
@@ -39,6 +39,7 @@ def export_account(principal: Principal = Depends(get_principal)) -> dict:
 
 @router.delete("/account")
 def delete_account(principal: Principal = Depends(get_principal)) -> dict:
+    require_role(principal, "owner")  # only the owner can delete the org
     db = get_db()
     org = principal.org_id
     store = get_retriever().store

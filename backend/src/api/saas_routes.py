@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from src.auth.principal import Principal, get_principal
+from src.auth.principal import Principal, get_principal, require_role
 from src.db.database import get_db
 from src.tenancy import repo, saas
 
@@ -44,6 +44,7 @@ class CreateKey(BaseModel):
 
 @router.post("/api-keys")
 def create_key(body: CreateKey, principal: Principal = Depends(get_principal)) -> dict:
+    require_role(principal, "admin")
     raw, record = saas.create_api_key(get_db(), principal.org_id, body.name)
     return {"api_key": raw, **record, "note": "Store this key now — it won't be shown again."}
 
