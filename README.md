@@ -202,6 +202,10 @@ Built phase-by-phase; the commit history tells the story.
 - [x] Phase 12 — ops (rate limiting, DB audit, chunk purge, Sentry/Langfuse hooks)
 - [x] Phase 13 — security (injection defenses, GDPR export/delete, CodeQL, headers)
 - [x] Phase 14 — depth & GTM (feedback, API keys, watchlists, export, filing alerts)
+- [~] Phase 9/16/18 — SSE streaming + FinOps cost + RLS/OTel/job-queue *(code done; RLS/tracing/async/live-LLM activate with Postgres/Langfuse/Redis/keys)*
+- [x] Phase 20 — teams, invites & RBAC (SSO/MFA need an external IdP)
+- [x] Phase 22 — re-retrieval loop + Exhibit 21 subsidiaries in GraphRAG
+- [x] Phase 23 — GTM (public /pricing, /docs, /trust, onboarding, PostHog)
 
 ### SaaS layer
 
