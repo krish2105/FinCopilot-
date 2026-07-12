@@ -8,12 +8,11 @@ hallucinates relationships. Node kinds:
 Edges:
   * company -[FACES]-> risk   (evidence: the chunk that mentions it)
   * company -[HAS_OFFICER]-> executive
+  * subsidiary — a subsidiary parsed from the 10-K Exhibit 21 (source
+    "subsidiaries"): company -[HAS_SUBSIDIARY]-> subsidiary
 Two companies "share" a risk iff they both connect to the same risk node — the
 relationship the GraphRAG route traverses. Every edge stores enough metadata
 (chunk_id, ticker, doc_type, page, section, source_url) to build a citation.
-
-Subsidiary edges would need Exhibit 21 (not in the primary-document corpus); the
-same traversal mechanism applies once those are ingested.
 """
 
 from __future__ import annotations
@@ -71,6 +70,10 @@ def _exec_id(name: str) -> str:
     return f"exec:{name}"
 
 
+def _sub_id(name: str) -> str:
+    return f"sub:{name.lower()}"
+
+
 class EntityGraph:
     def __init__(self, graph: nx.MultiDiGraph | None = None):
         self.g = graph if graph is not None else nx.MultiDiGraph()
@@ -116,6 +119,16 @@ class EntityGraph:
             if not self.g.has_node(eid):
                 self.g.add_node(eid, kind="executive", label=name)
             self.g.add_edge(ticker, eid, relation="has_officer", **evidence)
+
+        # Exhibit 21 -> subsidiary nodes (company -[has_subsidiary]-> subsidiary).
+        if str(m.doc_type) == "subsidiaries":
+            from src.retrieval.subsidiaries import parse_subsidiaries
+
+            for name in parse_subsidiaries(chunk.text):
+                sid = _sub_id(name)
+                if not self.g.has_node(sid):
+                    self.g.add_node(sid, kind="subsidiary", label=name)
+                self.g.add_edge(ticker, sid, relation="has_subsidiary", **evidence)
 
     # --- persistence ---
     def save(self, path: str) -> None:
@@ -171,6 +184,16 @@ class EntityGraph:
     def shared_risks(self, ticker_a: str, ticker_b: str) -> list[str]:
         return sorted(set(self.risks_for_company(ticker_a)) & set(self.risks_for_company(ticker_b)))
 
+    def subsidiaries_of(self, ticker: str) -> list[str]:
+        if not self.g.has_node(ticker):
+            return []
+        out = [
+            self.g.nodes[t]["label"]
+            for _, t, data in self.g.out_edges(ticker, data=True)
+            if data.get("relation") == "has_subsidiary"
+        ]
+        return sorted(set(out))
+
     def edge_evidence(self, company: str, topic: str) -> list[dict]:
         rid = _risk_id(topic)
         if not (self.g.has_node(company) and self.g.has_node(rid)):
@@ -179,6 +202,15 @@ class EntityGraph:
         # MultiDiGraph: iterate the parallel edges between company -> rid.
         if self.g.has_edge(company, rid):
             for _key, data in self.g.get_edge_data(company, rid).items():
+                out.append({k: v for k, v in data.items() if k != "relation"})
+        return out
+
+    def relation_evidence(self, ticker: str, relation: str) -> list[dict]:
+        if not self.g.has_node(ticker):
+            return []
+        out = []
+        for _, _, data in self.g.out_edges(ticker, data=True):
+            if data.get("relation") == relation:
                 out.append({k: v for k, v in data.items() if k != "relation"})
         return out
 

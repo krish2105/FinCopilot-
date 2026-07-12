@@ -58,8 +58,19 @@ def graphrag_retrieve(
 
     evidence_ids: list[str] = []
     summary_parts: list[str] = []
+    wants_subsidiaries = "subsidiar" in query.lower()
 
-    if len(mentioned) >= 2:
+    if wants_subsidiaries and mentioned:
+        # "what subsidiaries does X have?" -> Exhibit 21 traversal.
+        c = mentioned[0]
+        subs = graph.subsidiaries_of(c)
+        shown = subs[:25]
+        more = f" (+{len(subs) - len(shown)} more)" if len(subs) > len(shown) else ""
+        summary_parts.append(
+            f"{c} subsidiaries: {', '.join(shown) or 'none found in Exhibit 21'}{more}."
+        )
+        evidence_ids += [e["chunk_id"] for e in graph.relation_evidence(c, "has_subsidiary")]
+    elif len(mentioned) >= 2:
         # "what do A and B have in common" -> shared risks between two companies.
         a, b = mentioned[0], mentioned[1]
         shared = graph.shared_risks(a, b)

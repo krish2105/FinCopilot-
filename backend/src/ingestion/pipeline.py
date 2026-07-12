@@ -46,6 +46,8 @@ def _fetch_documents(ticker: str, sources: tuple[str, ...]) -> list[RawDocument]
     docs: list[RawDocument] = []
     if "edgar" in sources:
         docs += edgar.fetch_filings(ticker)
+    if "subsidiaries" in sources:
+        docs += edgar.fetch_subsidiaries(ticker)  # 10-K Exhibit 21 -> graph
     if "market" in sources:
         docs += market.fetch_market(ticker)
     if "news" in sources:

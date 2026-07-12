@@ -25,7 +25,7 @@ def main() -> None:
         "--sources",
         nargs="*",
         default=list(DEFAULT_SOURCES),
-        choices=["edgar", "market", "news"],
+        choices=["edgar", "subsidiaries", "market", "news"],
     )
     parser.add_argument(
         "--offline",

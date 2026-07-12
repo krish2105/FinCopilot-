@@ -21,6 +21,7 @@ class DocType(StrEnum):
     MARKET = "market"  # yfinance fundamentals rendered as text
     NEWS = "news"  # GDELT headline/article
     UPLOAD = "upload"  # user-uploaded document (data room)
+    SUBSIDIARIES = "subsidiaries"  # 10-K Exhibit 21 — list of subsidiaries
 
 
 class SourceMetadata(BaseModel):

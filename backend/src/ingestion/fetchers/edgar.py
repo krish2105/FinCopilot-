@@ -11,6 +11,7 @@ pipeline relies on market/news sources for them instead.
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 import httpx
@@ -120,3 +121,81 @@ def fetch_filings(
 
     logger.info("EDGAR: fetched %d filings for %s", len(docs), ticker)
     return docs
+
+
+_INDEX_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/index.json"
+
+
+def fetch_subsidiaries(ticker: str) -> list[RawDocument]:
+    """Fetch the latest 10-K's Exhibit 21 (list of subsidiaries), if present."""
+    if "." in ticker:
+        return []
+    with _client() as client:
+        cik = ticker_to_cik(ticker, client)
+        if cik is None:
+            return []
+        try:
+            sub = client.get(_SUBMISSIONS_URL.format(cik=cik))
+            sub.raise_for_status()
+            recent = sub.json()["filings"]["recent"]
+        except Exception as exc:
+            logger.warning("EDGAR submissions fetch failed for %s: %s", ticker, exc)
+            return []
+
+        # Find the most recent 10-K accession.
+        acc = next(
+            (
+                recent["accessionNumber"][i].replace("-", "")
+                for i in range(len(recent["form"]))
+                if recent["form"][i] == "10-K"
+            ),
+            None,
+        )
+        if not acc:
+            return []
+
+        try:
+            idx = client.get(_INDEX_URL.format(cik=cik, acc=acc))
+            idx.raise_for_status()
+            items = idx.json()["directory"]["item"]
+        except Exception as exc:
+            logger.warning("EDGAR index fetch failed for %s: %s", ticker, exc)
+            return []
+
+        # The index.json `type` is often just an icon, so match the filename too.
+        # EDGAR names look like "ex-21.htm", "aapl-ex211.htm", "a2025exhibit2110k.htm".
+        ex21 = next(
+            (
+                it["name"]
+                for it in items
+                if str(it.get("type", "")).upper().startswith("EX-21")
+                or re.search(r"(?:ex|exhibit)[\s_-]?21", it.get("name", ""), re.IGNORECASE)
+            ),
+            None,
+        )
+        if not ex21:
+            return []
+
+        url = _ARCHIVE_URL.format(cik=cik, acc=acc, doc=ex21)
+        time.sleep(0.2)
+        try:
+            page = client.get(url)
+            page.raise_for_status()
+        except Exception as exc:
+            logger.warning("EDGAR Exhibit 21 fetch failed (%s): %s", url, exc)
+            return []
+
+    md = SourceMetadata(
+        ticker=ticker.upper(),
+        doc_type=DocType.SUBSIDIARIES,
+        title=f"{ticker.upper()} 10-K Exhibit 21 (Subsidiaries)",
+        source_url=url,
+    )
+    return [
+        RawDocument(
+            doc_id=RawDocument.make_doc_id(ticker, DocType.SUBSIDIARIES, acc),
+            metadata=md,
+            content=page.text,
+            content_type="html",
+        )
+    ]
