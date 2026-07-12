@@ -1,8 +1,9 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, History, Plus, Sparkles } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ArrowUp, History, Plus, Share2, Sparkles } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, type AgentAnswer, type Citation } from "@/lib/api";
 import { track } from "@/lib/analytics";
@@ -28,7 +29,7 @@ const SUGGESTIONS = [
   "What was Apple's total net sales?",
 ];
 
-export default function WorkspacePage() {
+function WorkspaceInner() {
   const [tickers, setTickers] = useState<string[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
@@ -36,11 +37,14 @@ export default function WorkspacePage() {
   const [input, setInput] = useState("");
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [loading, setLoading] = useState(false);
+  const [slow, setSlow] = useState(false);
   const [streamStep, setStreamStep] = useState("");
   const [streamText, setStreamText] = useState("");
   const [activeCite, setActiveCite] = useState<Citation | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const params = useSearchParams();
+  const autoRan = useRef(false);
 
   async function loadConversation(id: string) {
     try {
@@ -78,9 +82,12 @@ export default function WorkspacePage() {
     setExchanges((e) => [...e, { id, query }]);
     setInput("");
     setLoading(true);
+    setSlow(false);
     setStreamStep("");
     setStreamText("");
     track("query_asked", { scoped: Boolean(roomId), tickers: selected.length });
+    // Cold-start masking: the free backend can sleep and take ~50s on first hit.
+    const slowTimer = setTimeout(() => setSlow(true), 8000);
     try {
       await api.askStream(query, selected, roomId || undefined, {
         onStep: (label) => setStreamStep(label),
@@ -92,14 +99,35 @@ export default function WorkspacePage() {
       const msg = err instanceof Error ? err.message : "Request failed";
       setExchanges((e) => e.map((x) => (x.id === id ? { ...x, error: msg } : x)));
       toast.error("Could not reach the API", {
-        description: "Make sure the backend is running and NEXT_PUBLIC_API_URL is set.",
+        description: "The backend may be waking up — try again in a moment.",
       });
     } finally {
+      clearTimeout(slowTimer);
       setLoading(false);
+      setSlow(false);
       setStreamStep("");
       setStreamText("");
     }
   }
+
+  // Shareable permalink: /workspace?q=... re-runs the question for a visitor.
+  function shareQuery(q: string) {
+    const url = `${window.location.origin}/workspace?q=${encodeURIComponent(q)}`;
+    navigator.clipboard?.writeText(url).then(
+      () => toast.success("Share link copied", { description: "Anyone with the link can re-run this question." }),
+      () => toast.error("Couldn't copy link"),
+    );
+  }
+
+  // Auto-run a shared question once on load.
+  useEffect(() => {
+    const q = params.get("q");
+    if (q && !autoRan.current) {
+      autoRan.current = true;
+      submit(q);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
 
   function openCite(marker: string, answer: AgentAnswer) {
     const c = answer.citations.find((x) => x.marker === marker);
@@ -175,7 +203,15 @@ export default function WorkspacePage() {
                   </div>
                 </div>
                 {ex.answer && (
-                  <AnswerCard answer={ex.answer} onCite={(m) => openCite(m, ex.answer!)} />
+                  <div className="flex flex-col gap-2">
+                    <AnswerCard answer={ex.answer} onCite={(m) => openCite(m, ex.answer!)} />
+                    <button
+                      onClick={() => shareQuery(ex.query)}
+                      className="inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-muted cursor-pointer"
+                    >
+                      <Share2 className="h-3.5 w-3.5" /> Share
+                    </button>
+                  </div>
                 )}
                 {ex.error && (
                   <div className="rounded-xl border border-danger/30 bg-danger/[0.07] p-4 text-sm text-danger">
@@ -192,6 +228,11 @@ export default function WorkspacePage() {
                   exit={{ opacity: 0 }}
                 >
                   <AgentProgress currentStep={streamStep} streamText={streamText} />
+                  {slow && (
+                    <p className="mt-2 text-center text-xs text-muted-foreground">
+                      Waking the free backend — the first request after idle can take ~50s. Hang tight.
+                    </p>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -286,5 +327,14 @@ export default function WorkspacePage() {
         onSelect={loadConversation}
       />
     </div>
+  );
+}
+
+export default function WorkspacePage() {
+  // useSearchParams (for shareable ?q= links) must live inside a Suspense boundary.
+  return (
+    <Suspense fallback={null}>
+      <WorkspaceInner />
+    </Suspense>
   );
 }

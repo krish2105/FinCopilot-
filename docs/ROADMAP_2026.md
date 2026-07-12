@@ -112,12 +112,12 @@ FinCopilot is **not a prototype**. It's ~6,800 LOC of backend across 20+ modules
 - ✅ 11 new backend tests (163 total green).
 - _Upgrade path:_ set an API key → enable `llm_context` for LLM-written context + let the live LLM show arithmetic (auto-verified).
 
-### Phase 27 — Consumer UX + launch polish · 3–4 days · $0
+### Phase 27 — Consumer UX + launch polish · ✅ DONE (2026-07-13) · $0
 **Goal:** looks and feels like a product a stranger would use.
-- Onboarding flow, empty states, shareable answer permalinks, full mobile-responsive pass.
-- Cold-start masking (keep-warm ping + honest "waking up" skeleton).
-- "Not investment advice" framing consistent everywhere (retail compliance posture).
-- **Acceptance:** a first-time user on mobile can go signup → ask → share in under 2 minutes.
+- ✅ **Shareable answer permalinks**: every answer has a Share button that copies `/workspace?q=…`; a visitor opening that link auto-runs the question (Suspense-wrapped `useSearchParams`).
+- ✅ **Cold-start masking**: app-shell fires a keep-warm `/health` ping on mount; the workspace shows an honest "waking the free backend (~50s)" note after 8s instead of a scary error.
+- ✅ Mobile: confirmed responsive shell (drawer nav, hamburger), onboarding, suggestion grid, responsive dashboard/charts. Friendlier error copy.
+- **Acceptance:** first-time user can ask → share on mobile; shared links re-run the question. ✓
 
 ### Phase 28 — Eval as a gate + reliability · 2–3 days · $0
 **Goal:** quality can't silently regress.

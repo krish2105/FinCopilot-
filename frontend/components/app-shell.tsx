@@ -14,10 +14,11 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Wordmark } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
+import { API_BASE } from "@/lib/api";
 import { isAuthConfigured } from "@/lib/supabase";
 
 const NAV = [
@@ -79,6 +80,12 @@ function Footerish() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+
+  // Cold-start masking: fire-and-forget ping to wake the free-tier backend as
+  // soon as the app shell mounts, so the user's first real query feels fast.
+  useEffect(() => {
+    fetch(`${API_BASE}/health`, { cache: "no-store" }).catch(() => {});
+  }, []);
 
   return (
     <div className="flex min-h-dvh bg-background">
