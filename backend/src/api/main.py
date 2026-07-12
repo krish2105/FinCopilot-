@@ -44,7 +44,7 @@ def root() -> dict[str, object]:
     return {
         "name": "FinCopilot API",
         "version": app.version,
-        "phase": "4 — adaptive routing + GraphRAG",
+        "phase": "5 — self-RAG gate + audit log",
         "tickers": settings.tickers,
         "disclaimer": "Informational research only. Not investment advice.",
     }
@@ -83,3 +83,13 @@ def graph_stats() -> dict[str, object]:
     if graph is None:
         return {"built": False, "message": "No entity graph yet — run ingestion."}
     return {"built": True, **graph.stats()}
+
+
+@app.get("/audit")
+def audit(limit: int = 100) -> dict[str, object]:
+    """Recent audit trail: query · routes · sources · providers · verdict (Phase 5)."""
+    from src.audit.log import get_audit_log
+
+    log = get_audit_log(settings)
+    records = log.recent(limit=limit)
+    return {"count": log.count(), "records": [r.model_dump() for r in records]}

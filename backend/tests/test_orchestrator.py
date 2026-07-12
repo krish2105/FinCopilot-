@@ -69,3 +69,24 @@ def test_simple_query_uses_hybrid(settings, seeded_retriever):
     ans = g.run("What were Apple's total net sales?", tickers=["AAPL"])
     assert ans.planned_route == "simple"
     assert ans.route == "hybrid"
+
+
+def test_faithfulness_gate_passes_grounded_answer(settings, seeded_retriever):
+    g = _graph(settings, seeded_retriever)
+    ans = g.run("What were Apple's total net sales?", tickers=["AAPL"])
+    # Extractive answer is verbatim from evidence -> faithful.
+    assert ans.verdict == "ok"
+    assert ans.faithfulness.faithful
+    assert ans.faithfulness.score >= 0.8
+
+
+def test_run_writes_audit_record(settings, seeded_retriever):
+    g = _graph(settings, seeded_retriever)
+    assert g.audit_log.count() == 0
+    ans = g.run("What were Apple's total net sales?", tickers=["AAPL"])
+    assert g.audit_log.count() == 1
+    rec = g.audit_log.recent()[0]
+    assert rec.query == ans.query
+    assert rec.route == ans.route
+    assert rec.verdict == ans.verdict
+    assert rec.latency_ms >= 0

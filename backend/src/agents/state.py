@@ -10,7 +10,12 @@ from __future__ import annotations
 import operator
 from typing import Annotated, TypedDict
 
-from src.agents.schemas import AnalystOutput, ComplianceOutput, VizOutput
+from src.agents.schemas import (
+    AnalystOutput,
+    ComplianceOutput,
+    FaithfulnessVerdict,
+    VizOutput,
+)
 from src.retrieval.types import RetrievalResult
 
 
@@ -26,8 +31,9 @@ class AgentState(TypedDict, total=False):
     analyst: AnalystOutput | None
     compliance: ComplianceOutput | None
     viz: VizOutput | None
-    # synthesis
+    # synthesis + self-RAG gate
     answer: str
     verdict: str
+    faithfulness: FaithfulnessVerdict | None
     # audit
     provider_trace: Annotated[list, operator.add]

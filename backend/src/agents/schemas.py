@@ -11,6 +11,16 @@ from pydantic import BaseModel, Field
 from src.retrieval.types import Citation
 
 
+class FaithfulnessVerdict(BaseModel):
+    """Self-RAG gate result: is every claim grounded in the cited evidence?"""
+
+    faithful: bool = True
+    score: float = 1.0
+    unsupported_claims: list[str] = Field(default_factory=list)
+    ungrounded_numbers: list[str] = Field(default_factory=list)
+    reason: str = ""
+
+
 class RouteDecision(BaseModel):
     """Adaptive-router verdict: which retrieval pipeline should answer."""
 
@@ -87,7 +97,9 @@ class AgentAnswer(BaseModel):
     flags: list[ComplianceFlag] = Field(default_factory=list)
     charts: list[ChartSpec] = Field(default_factory=list)
     provider_trace: list[ProviderCall] = Field(default_factory=list)
+    faithfulness: FaithfulnessVerdict = Field(default_factory=FaithfulnessVerdict)
     reranker: str = ""
     embed_backend: str = ""
     evidence_count: int = 0
+    latency_ms: int = 0
     disclaimer: str = "Informational research only. Not investment advice."

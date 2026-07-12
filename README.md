@@ -116,6 +116,20 @@ traverses to the answer with real filing citations. `GET /graph/stats` shows the
 graph; every answer reports both its `planned_route` and the actual `route` used
 (the UI's route badge).
 
+**Self-RAG faithfulness gate** (Phase 5): after synthesis, a gate
+(`backend/src/agents/faithfulness.py`) verifies every claim is grounded in the
+cited evidence. An always-on numeric guardrail blocks any figure not present in
+the sources ("uncited numbers are blocked"), and a semantic check (LLM when live,
+deterministic lexical grounding offline) flags unsupported statements. Ungrounded
+answers are turned into an honest *"insufficient evidence"* refusal instead of
+being returned.
+
+**Audit log** (Phase 5): every answered query appends a structured record —
+query · routes · sources · providers used · verdict · faithfulness score ·
+latency — to a JSONL trail (`backend/src/audit/`), readable via `GET /audit`.
+This is both the compliance trail and the FinOps story (which provider answered,
+how fast).
+
 > Full run instructions and real RAGAS evaluation numbers are added as later phases
 > land. This README is intentionally a stub during Phase 0.
 
@@ -128,7 +142,7 @@ Built phase-by-phase; the commit history tells the story.
 - [x] Phase 2 — advanced RAG (hybrid + reranker + citations)
 - [x] Phase 3 — agents (LangGraph orchestrator + specialists + provider router)
 - [x] Phase 4 — adaptive routing + GraphRAG
-- [ ] Phase 5 — Self-RAG gate + refusal + audit log
+- [x] Phase 5 — Self-RAG gate + refusal + audit log
 - [ ] Phase 6 — premium frontend + Supabase Auth
 - [ ] Phase 7 — RAGAS evaluation
 - [ ] Phase 8 — deploy (Vercel + Render + Supabase) + CI

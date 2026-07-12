@@ -13,13 +13,22 @@ deterministic extractive fallback, so the graph runs live or fully offline.
 from __future__ import annotations
 
 import logging
+import time
 
 from langgraph.graph import END, START, StateGraph
 
-from src.agents import analyst, classifier, compliance, researcher, visualization
+from src.agents import (
+    analyst,
+    classifier,
+    compliance,
+    faithfulness,
+    researcher,
+    visualization,
+)
 from src.agents.prompts import SYNTHESIS_SYSTEM, format_evidence, format_findings
-from src.agents.schemas import AgentAnswer, ProviderCall
+from src.agents.schemas import AgentAnswer, FaithfulnessVerdict, ProviderCall
 from src.agents.state import AgentState
+from src.audit.log import AuditLog, AuditRecord, audit_path
 from src.config.settings import Settings, get_settings
 from src.providers.router import ProviderRouter, get_router
 from src.retrieval import agentic, graphrag
@@ -43,6 +52,7 @@ class AgentGraph:
         # May be None before the first ingestion; relationship route then falls
         # back to hybrid search.
         self.entity_graph = entity_graph or EntityGraph.load(graph_path())
+        self.audit_log = AuditLog(audit_path(self.settings))
         self.graph = self._build()
 
     # --- graph wiring ---
@@ -54,6 +64,7 @@ class AgentGraph:
         b.add_node("comply", self._comply)
         b.add_node("visualize", self._visualize)
         b.add_node("synthesize", self._synthesize)
+        b.add_node("verify", self._verify)
         b.add_node("refuse", self._refuse)
 
         b.add_edge(START, "classify")
@@ -64,7 +75,8 @@ class AgentGraph:
             "comply", self._route_after_comply, {"refuse": "refuse", "continue": "visualize"}
         )
         b.add_edge("visualize", "synthesize")
-        b.add_edge("synthesize", END)
+        b.add_edge("synthesize", "verify")  # Self-RAG faithfulness gate
+        b.add_edge("verify", END)
         b.add_edge("refuse", END)
         return b.compile()
 
@@ -135,6 +147,27 @@ class AgentGraph:
         )
         return {"answer": answer, "verdict": "ok", "provider_trace": trace}
 
+    def _verify(self, state: AgentState) -> dict:
+        """Self-RAG gate: block the answer if any claim/number isn't grounded."""
+        trace: list = []
+        verdict = faithfulness.verify(
+            self.router, state.get("answer", ""), state.get("retrieval"), trace
+        )
+        if verdict.faithful:
+            return {"faithfulness": verdict, "provider_trace": trace}
+        answer = (
+            "I can't confidently answer from the retrieved sources — the drafted "
+            f"answer failed the faithfulness check ({verdict.reason}). This is "
+            "surfaced as insufficient evidence rather than risk an unsupported "
+            "claim. Try narrowing the question or ingesting more documents."
+        )
+        return {
+            "faithfulness": verdict,
+            "answer": answer,
+            "verdict": "insufficient_evidence",
+            "provider_trace": trace,
+        }
+
     def _refuse(self, state: AgentState) -> dict:
         comp = state.get("compliance")
         retrieval = state.get("retrieval")
@@ -153,10 +186,14 @@ class AgentGraph:
 
     # --- run + assemble ---
     def run(self, query: str, tickers: list[str] | None = None) -> AgentAnswer:
+        start = time.monotonic()
         final = self.graph.invoke({"query": query, "tickers": tickers, "provider_trace": []})
-        return self._to_answer(query, final)
+        latency_ms = int((time.monotonic() - start) * 1000)
+        answer = self._to_answer(query, final, latency_ms)
+        self._write_audit(answer, tickers)
+        return answer
 
-    def _to_answer(self, query: str, final: dict) -> AgentAnswer:
+    def _to_answer(self, query: str, final: dict, latency_ms: int) -> AgentAnswer:
         retrieval = final.get("retrieval")
         analyst_out = final.get("analyst")
         comp = final.get("compliance")
@@ -173,9 +210,28 @@ class AgentGraph:
             flags=comp.flags if comp else [],
             charts=viz.charts if viz else [],
             provider_trace=trace,
+            faithfulness=final.get("faithfulness") or FaithfulnessVerdict(),
             reranker=retrieval.reranker if retrieval else "",
             embed_backend=retrieval.embed_backend if retrieval else "",
             evidence_count=len(retrieval.chunks) if retrieval else 0,
+            latency_ms=latency_ms,
+        )
+
+    def _write_audit(self, ans: AgentAnswer, tickers: list[str] | None) -> None:
+        providers = sorted({f"{c.provider}:{c.model}" for c in ans.provider_trace})
+        self.audit_log.record(
+            AuditRecord(
+                query=ans.query,
+                tickers=tickers or [],
+                planned_route=ans.planned_route,
+                route=ans.route,
+                verdict=ans.verdict,
+                evidence_count=ans.evidence_count,
+                sources=[c.label() for c in ans.citations],
+                providers=providers,
+                faithfulness_score=ans.faithfulness.score,
+                latency_ms=ans.latency_ms,
+            )
         )
 
 
