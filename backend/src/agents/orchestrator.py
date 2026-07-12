@@ -34,6 +34,7 @@ from src.providers.router import ProviderRouter, get_router
 from src.retrieval import agentic, graphrag
 from src.retrieval.graph import EntityGraph, graph_path
 from src.retrieval.retriever import Retriever, get_retriever
+from src.security.injection import wrap_untrusted
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,7 @@ class AgentGraph:
         analyst_out = state.get("analyst")
         prompt = (
             f"Question: {state['query']}\n\n"
-            f"Evidence:\n{format_evidence(retrieval)}\n\n"
+            f"Evidence:\n{wrap_untrusted(format_evidence(retrieval))}\n\n"
             f"Analyst findings:\n{format_findings(analyst_out.findings if analyst_out else [])}\n\n"
             "Write a concise, fully-cited answer using only the evidence above."
         )

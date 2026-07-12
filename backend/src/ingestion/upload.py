@@ -61,6 +61,14 @@ def ingest_upload(
     if not text.strip():
         raise UploadError("No extractable text found in the document.")
 
+    # Flag (don't block) prompt-injection attempts in untrusted uploads; the
+    # synthesizer wraps all evidence as untrusted data regardless.
+    from src.security.injection import detect_injection
+
+    hits = detect_injection(text)
+    if hits:
+        logger.warning("Potential prompt-injection in upload %s: %s", filename, hits[:3])
+
     md = SourceMetadata(
         ticker=filename[:16].upper() or "DOC",
         doc_type=DocType.UPLOAD,

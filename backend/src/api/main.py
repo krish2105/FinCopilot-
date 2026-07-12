@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.account_routes import router as account_router
 from src.api.agent_routes import router as agent_router
 from src.api.billing_routes import router as billing_router
 from src.api.retrieval_routes import router as retrieval_router
@@ -39,6 +40,17 @@ app.include_router(retrieval_router)
 app.include_router(agent_router)
 app.include_router(workspace_router)
 app.include_router(billing_router)
+app.include_router(account_router)
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    resp = await call_next(request)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    resp.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    return resp
 
 
 @app.get("/health")
@@ -62,7 +74,7 @@ def root() -> dict[str, object]:
     return {
         "name": "FinCopilot API",
         "version": app.version,
-        "phase": "12 — ops + observability",
+        "phase": "13 — security + compliance",
         "tickers": settings.tickers,
         "disclaimer": "Informational research only. Not investment advice.",
     }
