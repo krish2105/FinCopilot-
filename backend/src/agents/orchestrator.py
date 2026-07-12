@@ -89,6 +89,7 @@ class AgentGraph:
     def _research(self, state: AgentState) -> dict:
         query = state["query"]
         tickers = state.get("tickers")
+        workspaces = state.get("workspaces")
         planned = state.get("planned_route", "simple")
         trace: list = []
 
@@ -98,13 +99,23 @@ class AgentGraph:
             )
             # Empty graph match -> fall back to hybrid so we still try to answer.
             if not result.chunks:
-                result = researcher.research(self.retriever, query, tickers, top_k=6)
+                result = researcher.research(
+                    self.retriever, query, tickers, top_k=6, workspaces=workspaces
+                )
         elif planned == "multi_hop":
             result = agentic.agentic_retrieve(
-                self.retriever, self.router, query, tickers, top_k=6, trace=trace
+                self.retriever,
+                self.router,
+                query,
+                tickers,
+                top_k=6,
+                trace=trace,
+                workspaces=workspaces,
             )
         else:
-            result = researcher.research(self.retriever, query, tickers, top_k=6)
+            result = researcher.research(
+                self.retriever, query, tickers, top_k=6, workspaces=workspaces
+            )
 
         return {"retrieval": result, "route": result.route, "provider_trace": trace}
 
@@ -185,9 +196,16 @@ class AgentGraph:
         return {"answer": answer, "verdict": "insufficient_evidence"}
 
     # --- run + assemble ---
-    def run(self, query: str, tickers: list[str] | None = None) -> AgentAnswer:
+    def run(
+        self,
+        query: str,
+        tickers: list[str] | None = None,
+        workspaces: list[str] | None = None,
+    ) -> AgentAnswer:
         start = time.monotonic()
-        final = self.graph.invoke({"query": query, "tickers": tickers, "provider_trace": []})
+        final = self.graph.invoke(
+            {"query": query, "tickers": tickers, "workspaces": workspaces, "provider_trace": []}
+        )
         latency_ms = int((time.monotonic() - start) * 1000)
         answer = self._to_answer(query, final, latency_ms)
         self._write_audit(answer, tickers)

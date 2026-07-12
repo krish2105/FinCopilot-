@@ -20,7 +20,8 @@ def research(
     query: str,
     tickers: list[str] | None = None,
     top_k: int = 6,
+    workspaces: list[str] | None = None,
 ) -> RetrievalResult:
-    result = retriever.retrieve(query, top_k=top_k, tickers=tickers)
+    result = retriever.retrieve(query, top_k=top_k, tickers=tickers, workspaces=workspaces)
     logger.info("researcher: %d evidence chunks for %r", len(result.chunks), query)
     return result

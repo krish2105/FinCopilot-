@@ -1,12 +1,20 @@
-"""Agent API (Phase 3): run the multi-agent graph and return a cited answer."""
+"""Agent API (Phase 3+): run the multi-agent graph and return a cited answer.
+
+Phase 10: scoped to the caller's tenant — retrieval spans the shared public corpus
+plus the caller's own workspaces (or a specific data room), and the exchange is
+persisted to the conversation history.
+"""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.agents.orchestrator import get_agent_graph
 from src.agents.schemas import AgentAnswer
+from src.auth.principal import Principal, get_principal
+from src.db.database import get_db
+from src.tenancy import repo
 
 router = APIRouter(tags=["agents"])
 
@@ -14,13 +22,53 @@ router = APIRouter(tags=["agents"])
 class AskRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     tickers: list[str] | None = None
+    workspace_id: str | None = None  # restrict to a specific data room
+    conversation_id: str | None = None  # append to an existing conversation
 
 
 @router.post("/ask", response_model=AgentAnswer)
-def ask(req: AskRequest) -> AgentAnswer:
-    """Orchestrator → Researcher → Analyst → Compliance → (Viz → Synthesis | Refuse).
+def ask(req: AskRequest, principal: Principal = Depends(get_principal)) -> AgentAnswer:
+    """Orchestrator → Researcher → Analyst → Compliance → (Viz → Synthesis | Refuse)
+    → Self-RAG gate, scoped to the caller's accessible workspaces."""
+    db = get_db()
 
-    Returns a fully-cited answer or an honest 'insufficient evidence' verdict,
-    with the LLM provider trace for the audit log.
-    """
-    return get_agent_graph().run(req.query, tickers=req.tickers)
+    # Resolve the workspace scope (always includes the shared public corpus).
+    if req.workspace_id:
+        ws = repo.get_workspace(db, req.workspace_id)
+        if not ws or ws.org_id != principal.org_id:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        scope = [req.workspace_id, repo.PUBLIC_WORKSPACE]
+    else:
+        scope = repo.accessible_workspace_ids(db, principal.org_id)
+
+    answer = get_agent_graph().run(req.query, tickers=req.tickers, workspaces=scope)
+
+    _persist(db, principal, req, answer)
+    return answer
+
+
+def _persist(db, principal: Principal, req: AskRequest, answer: AgentAnswer) -> None:
+    conv_id = req.conversation_id
+    if not conv_id:
+        ws = req.workspace_id or repo.PUBLIC_WORKSPACE
+        conv = repo.create_conversation(db, principal.org_id, ws, principal.user_id, req.query)
+        conv_id = conv.id
+    repo.add_message(db, conv_id, "user", req.query)
+    repo.add_message(db, conv_id, "assistant", answer.answer, answer.model_dump_json())
+    # Usage event (Phase 11 enforces quotas off these).
+    import uuid
+    from datetime import UTC, datetime
+
+    tokens = sum(p.latency_ms for p in answer.provider_trace)  # proxy until token counts wired
+    db.execute(
+        "INSERT INTO usage_events (id, org_id, user_id, ts, kind, tokens, providers) "
+        "VALUES (?, ?, ?, ?, 'query', ?, ?)",
+        (
+            f"use_{uuid.uuid4().hex[:16]}",
+            principal.org_id,
+            principal.user_id,
+            datetime.now(UTC).isoformat(),
+            tokens,
+            ",".join(sorted({p.provider for p in answer.provider_trace})),
+        ),
+    )

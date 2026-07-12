@@ -23,6 +23,7 @@ class AgentState(TypedDict, total=False):
     # inputs
     query: str
     tickers: list[str] | None
+    workspaces: list[str] | None
     # routing
     planned_route: str  # classifier verdict: simple | multi_hop | relationship
     route: str  # actual retrieval route used

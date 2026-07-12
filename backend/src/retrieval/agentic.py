@@ -51,6 +51,7 @@ def agentic_retrieve(
     tickers: list[str] | None = None,
     top_k: int = 6,
     trace: list | None = None,
+    workspaces: list[str] | None = None,
 ) -> RetrievalResult:
     plan = router.structured(
         f"Decompose this financial question into up to {MAX_ITERS} focused "
@@ -63,7 +64,7 @@ def agentic_retrieve(
 
     by_id: dict[str, RetrievedChunk] = {}
     for i, sq in enumerate(sub_queries, start=1):
-        res = retriever.retrieve(sq, top_k=top_k, tickers=tickers)
+        res = retriever.retrieve(sq, top_k=top_k, tickers=tickers, workspaces=workspaces)
         logger.info(
             "agentic iter %d/%d | %r -> %d chunks", i, len(sub_queries), sq, len(res.chunks)
         )

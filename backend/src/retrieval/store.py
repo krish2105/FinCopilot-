@@ -44,7 +44,11 @@ class VectorStore:
     def count(self) -> int: ...
     def iter_all(self) -> list[Chunk]: ...
     def search(
-        self, query_vec: list[float], k: int = 8, tickers: list[str] | None = None
+        self,
+        query_vec: list[float],
+        k: int = 8,
+        tickers: list[str] | None = None,
+        workspaces: list[str] | None = None,
     ) -> list[SearchHit]: ...
     def assert_query_compatible(self, dim: int, embed_model: str) -> None:
         if dim != self.dim:
@@ -64,6 +68,7 @@ def _row_to_chunk(row: dict) -> Chunk:
         filing_date=row["filing_date"],
         page=row["page"],
         section=row["section"],
+        workspace_id=row["workspace_id"] if row.get("workspace_id") else "public",
     )
     emb = json.loads(row["embedding"]) if row["embedding"] else None
     return Chunk(
@@ -106,11 +111,17 @@ class LocalVectorStore(VectorStore):
                 token_estimate INTEGER,
                 embedding TEXT,
                 embed_model TEXT,
-                dim INTEGER
+                dim INTEGER,
+                workspace_id TEXT DEFAULT 'public'
             )
             """
         )
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_ticker ON chunks(ticker)")
+        # Migrate older stores that predate the workspace_id column.
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(chunks)")}
+        if "workspace_id" not in cols:
+            self.conn.execute("ALTER TABLE chunks ADD COLUMN workspace_id TEXT DEFAULT 'public'")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_ws ON chunks(workspace_id)")
         self.conn.commit()
 
     def upsert(self, chunks: list[Chunk]) -> int:
@@ -137,6 +148,7 @@ class LocalVectorStore(VectorStore):
                     json.dumps(c.embedding) if c.embedding is not None else None,
                     self.embed_model,
                     self.dim,
+                    m.workspace_id,
                 )
             )
         self.conn.executemany(
@@ -144,8 +156,8 @@ class LocalVectorStore(VectorStore):
             INSERT INTO chunks (
                 chunk_id, doc_id, ticker, doc_type, title, source_url,
                 filing_date, page, section, text, token_estimate, embedding,
-                embed_model, dim
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                embed_model, dim, workspace_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(chunk_id) DO NOTHING
             """,
             rows,
@@ -182,7 +194,11 @@ class LocalVectorStore(VectorStore):
         return [_row_to_chunk(dict(r)) for r in rows]
 
     def search(
-        self, query_vec: list[float], k: int = 8, tickers: list[str] | None = None
+        self,
+        query_vec: list[float],
+        k: int = 8,
+        tickers: list[str] | None = None,
+        workspaces: list[str] | None = None,
     ) -> list[SearchHit]:
         import numpy as np
 
@@ -191,7 +207,10 @@ class LocalVectorStore(VectorStore):
         params: list = []
         if tickers:
             sql += f" AND ticker IN ({','.join('?' * len(tickers))})"
-            params = [t.upper() for t in tickers]
+            params += [t.upper() for t in tickers]
+        if workspaces:
+            sql += f" AND workspace_id IN ({','.join('?' * len(workspaces))})"
+            params += list(workspaces)
         rows = self.conn.execute(sql, params).fetchall()
         if not rows:
             return []

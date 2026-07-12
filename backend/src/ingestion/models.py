@@ -20,6 +20,7 @@ class DocType(StrEnum):
     EIGHT_K = "8-K"
     MARKET = "market"  # yfinance fundamentals rendered as text
     NEWS = "news"  # GDELT headline/article
+    UPLOAD = "upload"  # user-uploaded document (data room)
 
 
 class SourceMetadata(BaseModel):
@@ -33,6 +34,9 @@ class SourceMetadata(BaseModel):
     # Pseudo-page (see parse.py) and section heading for in-document citation.
     page: int | None = None
     section: str | None = None
+    # Tenancy: which workspace/data-room this chunk belongs to. The shared public
+    # corpus uses "public"; uploaded documents use their private workspace id.
+    workspace_id: str = "public"
 
 
 class RawDocument(BaseModel):

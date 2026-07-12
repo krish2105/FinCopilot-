@@ -21,6 +21,9 @@ class RetrieveRequest(BaseModel):
 def retrieve(req: RetrieveRequest) -> RetrievalResult:
     """Return ranked, cited evidence + an extractive cited answer.
 
-    LLM synthesis over these same citations is layered on in Phase 3.
+    Unauthenticated debug endpoint — scoped to the shared public corpus only so it
+    can never surface a tenant's private uploads.
     """
-    return get_retriever().retrieve(req.query, top_k=req.top_k, tickers=req.tickers)
+    return get_retriever().retrieve(
+        req.query, top_k=req.top_k, tickers=req.tickers, workspaces=["public"]
+    )

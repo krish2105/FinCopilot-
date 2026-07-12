@@ -22,6 +22,24 @@ def settings(tmp_path) -> Settings:
     )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_singletons(tmp_path):
+    """Reset process-wide singletons and point the metadata DB at a temp dir so
+    API tests never touch the real ./data directory or bleed state across tests."""
+    from src.agents import orchestrator as O
+    from src.db import database
+    from src.providers import router as PR
+    from src.retrieval import retriever as R
+
+    database.reset_db()
+    database._db = database.Database(None, str(tmp_path))
+    R.reset_retriever()
+    O.reset_agent_graph()
+    PR.reset_router()
+    yield
+    database.reset_db()
+
+
 SAMPLE_10K_HTML = """
 <html><body>
 <p>Item 1. Business</p>

@@ -27,9 +27,14 @@ def hybrid_search(
     bm25: BM25Index | None,
     candidate_k: int = 30,
     tickers: list[str] | None = None,
+    workspaces: list[str] | None = None,
 ) -> list[RetrievedChunk]:
-    dense_hits = store.search(query_vec, k=candidate_k, tickers=tickers)
-    bm25_hits = bm25.query(query_text, k=candidate_k, tickers=tickers) if bm25 else []
+    dense_hits = store.search(query_vec, k=candidate_k, tickers=tickers, workspaces=workspaces)
+    bm25_hits = (
+        bm25.query(query_text, k=candidate_k, tickers=tickers, workspaces=workspaces)
+        if bm25
+        else []
+    )
 
     dense_ranks = _rank_map(dense_hits)
     bm25_ranks = _rank_map(bm25_hits)

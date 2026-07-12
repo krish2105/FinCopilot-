@@ -43,6 +43,7 @@ class Retriever:
         top_k: int = 6,
         candidate_k: int = 30,
         tickers: list[str] | None = None,
+        workspaces: list[str] | None = None,
     ) -> RetrievalResult:
         query_vec = self.embedder.embed([query])[0]
         fused = hybrid_search(
@@ -52,6 +53,7 @@ class Retriever:
             self.bm25,
             candidate_k=candidate_k,
             tickers=tickers,
+            workspaces=workspaces,
         )
         reranked = self.reranker.rerank(query, fused, top_k=top_k)
         citations = assign_citations(reranked)

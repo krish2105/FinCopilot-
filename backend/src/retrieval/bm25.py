@@ -47,6 +47,7 @@ class BM25Index:
                 "filing_date": c.metadata.filing_date,
                 "page": c.metadata.page,
                 "section": c.metadata.section,
+                "workspace_id": c.metadata.workspace_id,
             }
             for c in chunks
         ]
@@ -77,15 +78,23 @@ class BM25Index:
         self._bm25 = BM25Okapi(corpus)
 
     # --- query ---
-    def query(self, text: str, k: int = 8, tickers: list[str] | None = None) -> list[SearchHit]:
+    def query(
+        self,
+        text: str,
+        k: int = 8,
+        tickers: list[str] | None = None,
+        workspaces: list[str] | None = None,
+    ) -> list[SearchHit]:
         if not self._records:
             return []
         scores = self._bm25.get_scores(tokenize(text))
         allowed = {t.upper() for t in tickers} if tickers else None
+        allowed_ws = set(workspaces) if workspaces else None
         candidates = [
             i
             for i in range(len(scores))
-            if allowed is None or self._records[i]["ticker"].upper() in allowed
+            if (allowed is None or self._records[i]["ticker"].upper() in allowed)
+            and (allowed_ws is None or self._records[i].get("workspace_id", "public") in allowed_ws)
         ]
         ranked = sorted(candidates, key=lambda i: scores[i], reverse=True)
         hits: list[SearchHit] = []

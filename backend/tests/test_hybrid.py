@@ -7,7 +7,7 @@ class _FakeStore:
     def __init__(self, hits):
         self._hits = hits
 
-    def search(self, query_vec, k=8, tickers=None):
+    def search(self, query_vec, k=8, tickers=None, workspaces=None):
         return self._hits[:k]
 
 
@@ -15,7 +15,7 @@ class _FakeBM25:
     def __init__(self, hits):
         self._hits = hits
 
-    def query(self, text, k=8, tickers=None):
+    def query(self, text, k=8, tickers=None, workspaces=None):
         return self._hits[:k]
 
 

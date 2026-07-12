@@ -22,7 +22,21 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
     supabase_service_role_key: str | None = None
+    supabase_jwt_secret: str | None = None  # verifies Supabase-issued JWTs
     database_url: str | None = None
+
+    # --- Auth / SaaS ---
+    # When false (default), unauthenticated requests get a shared demo tenant so the
+    # app is usable offline/in CI. Set true in production to require a valid JWT.
+    auth_required: bool = False
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    redis_url: str | None = None
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    sentry_dsn: str | None = None
+    # Per-minute request cap per principal (rate limiter).
+    rate_limit_per_minute: int = 60
 
     # --- Optional data providers ---
     fmp_api_key: str | None = None
