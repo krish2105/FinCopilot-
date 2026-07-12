@@ -64,6 +64,7 @@ class AgentGraph:
         b.add_node("visualize", self._visualize)
         b.add_node("synthesize", self._synthesize)
         b.add_node("verify", self._verify)
+        b.add_node("giveup", self._giveup)
         b.add_node("refuse", self._refuse)
 
         b.add_edge(START, "classify")
@@ -75,9 +76,17 @@ class AgentGraph:
         )
         b.add_edge("visualize", "synthesize")
         b.add_edge("synthesize", "verify")  # Self-RAG faithfulness gate
-        b.add_edge("verify", END)
+        # On failure, loop back to broaden retrieval (bounded); else accept or give up.
+        b.add_conditional_edges(
+            "verify",
+            self._route_after_verify,
+            {"accept": END, "retry": "research", "giveup": "giveup"},
+        )
+        b.add_edge("giveup", END)
         b.add_edge("refuse", END)
         return b.compile()
+
+    MAX_RERETRIEVE = 1
 
     # --- nodes ---
     def _classify(self, state: AgentState) -> dict:
@@ -87,7 +96,11 @@ class AgentGraph:
 
     def _research(self, state: AgentState) -> dict:
         query = state["query"]
-        tickers = state.get("tickers")
+        # On a re-retrieval attempt, broaden: more candidates and drop the ticker
+        # filter so the second pass has a better chance of grounding the answer.
+        broadened = state.get("retry_count", 0) > 0
+        tickers = None if broadened else state.get("tickers")
+        top_k = 10 if broadened else 6
         workspaces = state.get("workspaces")
         planned = state.get("planned_route", "simple")
         trace: list = []
@@ -99,7 +112,7 @@ class AgentGraph:
             # Empty graph match -> fall back to hybrid so we still try to answer.
             if not result.chunks:
                 result = researcher.research(
-                    self.retriever, query, tickers, top_k=6, workspaces=workspaces
+                    self.retriever, query, tickers, top_k=top_k, workspaces=workspaces
                 )
         elif planned == "multi_hop":
             result = agentic.agentic_retrieve(
@@ -107,13 +120,13 @@ class AgentGraph:
                 self.router,
                 query,
                 tickers,
-                top_k=6,
+                top_k=top_k,
                 trace=trace,
                 workspaces=workspaces,
             )
         else:
             result = researcher.research(
-                self.retriever, query, tickers, top_k=6, workspaces=workspaces
+                self.retriever, query, tickers, top_k=top_k, workspaces=workspaces
             )
 
         return {"retrieval": result, "route": result.route, "provider_trace": trace}
@@ -158,25 +171,36 @@ class AgentGraph:
         return {"answer": answer, "verdict": "ok", "provider_trace": trace}
 
     def _verify(self, state: AgentState) -> dict:
-        """Self-RAG gate: block the answer if any claim/number isn't grounded."""
+        """Self-RAG gate: verify grounding. On failure the graph may loop back to
+        re-retrieve (broadened) before giving up — the re-retrieval-on-failure
+        pattern that keeps unsupported answers from slipping through."""
         trace: list = []
         verdict = faithfulness.verify(
             self.router, state.get("answer", ""), state.get("retrieval"), trace
         )
-        if verdict.faithful:
-            return {"faithfulness": verdict, "provider_trace": trace}
+        out: dict = {"faithfulness": verdict, "provider_trace": trace}
+        if not verdict.faithful:
+            out["retry_count"] = state.get("retry_count", 0) + 1
+        return out
+
+    def _route_after_verify(self, state: AgentState) -> str:
+        v = state.get("faithfulness")
+        if v and v.faithful:
+            return "accept"
+        if state.get("retry_count", 0) <= self.MAX_RERETRIEVE:
+            return "retry"
+        return "giveup"
+
+    def _giveup(self, state: AgentState) -> dict:
+        verdict = state.get("faithfulness")
+        reason = verdict.reason if verdict else "the drafted answer was not grounded."
         answer = (
-            "I can't confidently answer from the retrieved sources — the drafted "
-            f"answer failed the faithfulness check ({verdict.reason}). This is "
-            "surfaced as insufficient evidence rather than risk an unsupported "
+            "I can't confidently answer from the retrieved sources — after "
+            f"re-retrieving, the answer still failed the faithfulness check ({reason}). "
+            "This is surfaced as insufficient evidence rather than risk an unsupported "
             "claim. Try narrowing the question or ingesting more documents."
         )
-        return {
-            "faithfulness": verdict,
-            "answer": answer,
-            "verdict": "insufficient_evidence",
-            "provider_trace": trace,
-        }
+        return {"answer": answer, "verdict": "insufficient_evidence"}
 
     def _refuse(self, state: AgentState) -> dict:
         comp = state.get("compliance")
@@ -203,7 +227,13 @@ class AgentGraph:
     ) -> AgentAnswer:
         start = time.monotonic()
         final = self.graph.invoke(
-            {"query": query, "tickers": tickers, "workspaces": workspaces, "provider_trace": []}
+            {
+                "query": query,
+                "tickers": tickers,
+                "workspaces": workspaces,
+                "provider_trace": [],
+                "retry_count": 0,
+            }
         )
         latency_ms = int((time.monotonic() - start) * 1000)
         return self._to_answer(query, final, latency_ms)
@@ -231,6 +261,7 @@ class AgentGraph:
             "tickers": tickers,
             "workspaces": workspaces,
             "provider_trace": [],
+            "retry_count": 0,
         }
         for update in self.graph.stream(acc, stream_mode="updates"):
             for node, delta in update.items():
@@ -254,6 +285,8 @@ class AgentGraph:
         comp = final.get("compliance")
         viz = final.get("viz")
         trace = [ProviderCall(**c) for c in final.get("provider_trace", [])]
+        from src.billing.pricing import estimate_cost
+
         return AgentAnswer(
             query=query,
             route=final.get("route", "hybrid"),
@@ -270,6 +303,7 @@ class AgentGraph:
             embed_backend=retrieval.embed_backend if retrieval else "",
             evidence_count=len(retrieval.chunks) if retrieval else 0,
             latency_ms=latency_ms,
+            cost_usd=estimate_cost(trace),
         )
 
 

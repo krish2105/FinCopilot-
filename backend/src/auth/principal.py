@@ -48,6 +48,8 @@ def _api_key_principal(db: Database, api_key: str) -> Principal | None:
     row = db.query_one("SELECT * FROM api_keys WHERE key_hash = ?", (key_hash,))
     if not row:
         return None
+    if row.get("expires_at") and row["expires_at"] < _now():
+        return None  # expired key
     db.execute("UPDATE api_keys SET last_used = ? WHERE id = ?", (_now(), row["id"]))
     org = repo.get_org(db, row["org_id"])
     if not org:

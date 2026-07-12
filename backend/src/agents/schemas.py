@@ -103,4 +103,5 @@ class AgentAnswer(BaseModel):
     embed_backend: str = ""
     evidence_count: int = 0
     latency_ms: int = 0
+    cost_usd: float = 0.0
     disclaimer: str = "Informational research only. Not investment advice."

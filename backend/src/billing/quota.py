@@ -38,10 +38,22 @@ def document_count(db: Database, org_id: str) -> int:
     return int(row["n"]) if row else 0
 
 
+def month_token_sum(db: Database, org_id: str) -> int:
+    row = db.query_one(
+        "SELECT COALESCE(SUM(tokens), 0) AS t FROM usage_events "
+        "WHERE org_id = ? AND kind = 'query' AND ts >= ?",
+        (org_id, _month_start_iso()),
+    )
+    return int(row["t"]) if row else 0
+
+
 def usage_summary(db: Database, org_id: str, plan_id: str) -> dict:
+    from src.billing.pricing import estimate_cost_from_tokens
+
     plan = get_plan(plan_id)
     q = month_query_count(db, org_id)
     d = document_count(db, org_id)
+    tokens = month_token_sum(db, org_id)
     return {
         "plan": plan.model_dump(),
         "queries_used": q,
@@ -49,6 +61,8 @@ def usage_summary(db: Database, org_id: str, plan_id: str) -> dict:
         "queries_remaining": max(0, plan.queries_per_month - q),
         "documents_used": d,
         "documents_limit": plan.max_documents,
+        "tokens_used": tokens,
+        "est_cost_usd": estimate_cost_from_tokens(tokens),
     }
 
 

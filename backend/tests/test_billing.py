@@ -59,6 +59,28 @@ def test_stripe_guarded_when_unconfigured(db):
     assert "not configured" in str(exc.value).lower()
 
 
+def test_cost_estimation():
+    from src.agents.schemas import ProviderCall
+    from src.billing.pricing import estimate_cost, price_per_m
+
+    assert price_per_m("stub-llm-v1") == 0.0
+    assert price_per_m("gemini-2.5-flash") == 0.30
+    trace = [ProviderCall(provider="gemini", model="gemini-2.5-flash", tokens=1_000_000)]
+    assert estimate_cost(trace) == 0.30
+    # cached calls don't cost
+    trace.append(
+        ProviderCall(provider="gemini", model="gemini-2.5-flash", tokens=1_000_000, cached=True)
+    )
+    assert estimate_cost(trace) == 0.30
+
+
+def test_usage_summary_includes_cost(db):
+    for _ in range(2):
+        _add_query(db, "org1")
+    s = usage_summary(db, "org1", "free")
+    assert "tokens_used" in s and "est_cost_usd" in s
+
+
 def test_billing_api_wiring():
     from fastapi.testclient import TestClient
 

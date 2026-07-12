@@ -75,6 +75,7 @@ export interface AgentAnswer {
   embed_backend: string;
   evidence_count: number;
   latency_ms: number;
+  cost_usd: number;
   disclaimer: string;
 }
 
@@ -181,6 +182,8 @@ export interface Usage {
   queries_remaining: number;
   documents_used: number;
   documents_limit: number;
+  tokens_used: number;
+  est_cost_usd: number;
 }
 
 async function authHeaders(): Promise<Record<string, string>> {

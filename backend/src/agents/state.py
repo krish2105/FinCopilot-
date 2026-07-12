@@ -36,5 +36,6 @@ class AgentState(TypedDict, total=False):
     answer: str
     verdict: str
     faithfulness: FaithfulnessVerdict | None
+    retry_count: int  # re-retrieval-on-failure attempts
     # audit
     provider_trace: Annotated[list, operator.add]

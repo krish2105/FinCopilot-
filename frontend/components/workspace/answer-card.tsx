@@ -106,6 +106,9 @@ export function AnswerCard({
         <span className="ml-auto flex items-center gap-3">
           <StatChip icon={Clock} label={`${answer.latency_ms} ms`} />
           <StatChip icon={Quote} label={`${answer.evidence_count} sources`} />
+          {answer.cost_usd > 0 && (
+            <StatChip icon={Cpu} label={`$${answer.cost_usd.toFixed(4)}`} />
+          )}
         </span>
       </div>
 

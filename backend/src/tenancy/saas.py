@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+from datetime import UTC, datetime, timedelta
 
 from src.db.database import Database
 from src.tenancy.repo import _id, _now
@@ -38,12 +39,13 @@ def create_api_key(db: Database, org_id: str, name: str) -> tuple[str, dict]:
     key_hash = hashlib.sha256(raw.encode()).hexdigest()
     kid = _id("key")
     prefix = raw[:10]
+    expires = (datetime.now(UTC) + timedelta(days=365)).isoformat()
     db.execute(
-        "INSERT INTO api_keys (id, org_id, name, prefix, key_hash, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (kid, org_id, name[:80], prefix, key_hash, _now()),
+        "INSERT INTO api_keys (id, org_id, name, prefix, key_hash, created_at, expires_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (kid, org_id, name[:80], prefix, key_hash, _now(), expires),
     )
-    return raw, {"id": kid, "name": name[:80], "prefix": prefix}
+    return raw, {"id": kid, "name": name[:80], "prefix": prefix, "expires_at": expires}
 
 
 def list_api_keys(db: Database, org_id: str) -> list[dict]:

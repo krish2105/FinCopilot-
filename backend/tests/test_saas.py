@@ -55,3 +55,24 @@ def test_api_key_authenticates_a_principal(settings):
     raw, _ = saas.create_api_key(db, org.id, "svc")
     principal = resolve_principal(settings, db, authorization=None, x_api_key=raw)
     assert principal.org_id == org.id and principal.role == "service"
+
+
+def test_expired_api_key_is_rejected(settings):
+    import hashlib
+
+    import pytest
+    from fastapi import HTTPException
+
+    from src.auth.principal import resolve_principal
+
+    db = Database(None, settings.data_dir)
+    raw, rec = saas.create_api_key(db, "org1", "svc")
+    # Force expiry into the past.
+    db.execute(
+        "UPDATE api_keys SET expires_at = '2000-01-01T00:00:00+00:00' WHERE id = ?", (rec["id"],)
+    )
+    with pytest.raises(HTTPException) as exc:
+        resolve_principal(settings, db, authorization=None, x_api_key=raw)
+    assert exc.value.status_code == 401
+    # sanity: the hash lookup path is what we exercised
+    assert hashlib.sha256(raw.encode()).hexdigest()

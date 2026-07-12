@@ -103,10 +103,30 @@ export default function BillingPage() {
             <Skeleton className="h-10" />
           </div>
         ) : (
-          <div className="grid gap-5 sm:grid-cols-2">
-            <UsageBar label="Queries" used={usage.queries_used} limit={usage.queries_limit} />
-            <UsageBar label="Documents" used={usage.documents_used} limit={usage.documents_limit} />
-          </div>
+          <>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <UsageBar label="Queries" used={usage.queries_used} limit={usage.queries_limit} />
+              <UsageBar
+                label="Documents"
+                used={usage.documents_used}
+                limit={usage.documents_limit}
+              />
+            </div>
+            <div className="mt-5 flex flex-wrap gap-x-8 gap-y-2 border-t border-border pt-4 text-sm">
+              <span className="text-muted-foreground">
+                Tokens{" "}
+                <span className="font-mono tabular text-foreground">
+                  {usage.tokens_used.toLocaleString()}
+                </span>
+              </span>
+              <span className="text-muted-foreground">
+                Est. spend this month{" "}
+                <span className="font-mono tabular text-foreground">
+                  ${usage.est_cost_usd.toFixed(4)}
+                </span>
+              </span>
+            </div>
+          </>
         )}
       </Card>
 
