@@ -7,8 +7,10 @@
 
 [![CI](https://github.com/krish2105/FinCopilot-/actions/workflows/ci.yml/badge.svg)](https://github.com/krish2105/FinCopilot-/actions/workflows/ci.yml)
 
-<!-- After deploying (see scripts/deploy.md), replace the two placeholders below. -->
-**Live demo:** `https://<your-app>.vercel.app` · **API:** `https://<your-api>.onrender.com`
+**Live demo:** [fin-copilot-six.vercel.app](https://fin-copilot-six.vercel.app) · **API:** [fincopilot-api-qypb.onrender.com](https://fincopilot-api-qypb.onrender.com)
+
+<!-- Record a ~20s screen capture of the workspace answering a question, save as docs/media/demo.gif -->
+![FinCopilot demo](docs/media/demo.gif)
 
 > Deploy is one-blueprint-per-service and fully wired: **Vercel** (frontend) +
 > **Render** (`render.yaml`) + **Supabase** (pgvector). Step-by-step:
@@ -24,18 +26,36 @@ orchestrates specialist agents (Researcher, Analyst, Compliance, Visualization) 
 an adaptive RAG stack. Every number traces to a real filing; unsupported claims are
 refused, not guessed.
 
+## Screenshots
+
+<!-- Add these images to docs/media/ (see docs/media/README.md for exact shots). -->
+| Workspace — cited answer + faithfulness | Ticker dashboard — live prices & charts |
+| --- | --- |
+| ![Workspace](docs/media/workspace.png) | ![Dashboard](docs/media/dashboard.png) |
+
 ## Architecture (at a glance)
 
-```
-User query ──► Orchestrator ──► Adaptive RAG router
-                                  ├─ simple factual  → hybrid search + reranker
-                                  ├─ multi-hop       → agentic ReAct loop (≤3 iters)
-                                  └─ relationship    → GraphRAG (entity graph)
-             Researcher · Analyst · Compliance · Visualization
-                                  │
-                     Self-RAG faithfulness gate ──► cited answer  OR  "insufficient evidence"
-                                  │
-                            Audit log (query · route · sources · provider · verdict)
+```mermaid
+flowchart TD
+    U["User query — Next.js workspace (SSE streaming)"] --> ORCH["Orchestrator · LangGraph"]
+    ORCH --> CLS{"Complexity classifier"}
+    CLS -->|simple| HS["Hybrid search — pgvector + BM25 · RRF → rerank"]
+    CLS -->|multi-hop| AG["Agentic ReAct loop ≤3 iters"]
+    CLS -->|relationship| GR["GraphRAG — entity graph"]
+    HS --> AGENTS
+    AG --> AGENTS
+    GR --> AGENTS
+    subgraph AGENTS["Specialist agents"]
+        direction LR
+        R["Researcher"] --> A["Analyst + exact calculator"] --> C["Compliance (can veto)"] --> V["Visualization"]
+    end
+    AGENTS --> GATE{"Self-RAG faithfulness gate — grounded? cited? math correct?"}
+    GATE -->|grounded| ANS["Cited answer + charts"]
+    GATE -->|unsupported| REF["'Insufficient evidence'"]
+    ANS --> AUD["Audit log"]
+    REF --> AUD
+    CORP[("Ingestion — SEC EDGAR + market + news → Contextual Retrieval → pgvector + BM25")] -.grounds.-> HS
+    LLM["Provider router — Gemini → Groq → offline stub"] -.powers.-> AGENTS
 ```
 
 See [docs/architecture.md](docs/architecture.md), [DECISIONS.md](DECISIONS.md), and

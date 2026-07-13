@@ -1,5 +1,32 @@
 # Architecture
 
+## Diagram
+
+```mermaid
+flowchart TD
+    U["User query — Next.js workspace (SSE streaming)"] --> ORCH["Orchestrator · LangGraph state machine"]
+    ORCH --> CLS{"Complexity classifier — pick RAG route"}
+    CLS -->|simple factual| HS["Hybrid search — dense pgvector + BM25 · RRF → cross-encoder rerank"]
+    CLS -->|multi-hop| AG["Agentic ReAct loop — query decomposition ≤3 iters"]
+    CLS -->|relationship| GR["GraphRAG — NetworkX entity graph"]
+    HS --> AGENTS
+    AG --> AGENTS
+    GR --> AGENTS
+    subgraph AGENTS["Specialist agents"]
+        direction LR
+        R["Researcher"] --> A["Analyst — figures from retrieved evidence only + exact calculator"] --> C["Compliance — flags + can veto"] --> V["Visualization"]
+    end
+    AGENTS --> GATE{"Self-RAG faithfulness gate — every claim grounded? numbers cited? math correct?"}
+    GATE -->|grounded| ANS["Cited answer + charts + provider trace"]
+    GATE -->|unsupported| REF["'Insufficient evidence' — honest refusal"]
+    ANS --> AUD["Audit log — query · route · sources · provider · latency · cost · verdict"]
+    REF --> AUD
+
+    CORP[("Ingestion — real SEC EDGAR + market + news → Contextual Retrieval chunks → pgvector + BM25")] -.grounds.-> HS
+    CORP -.builds.-> GR
+    LLM["Provider router — Gemini 2.5 → Groq Llama 3.3 → offline stub"] -.powers.-> AGENTS
+```
+
 ## Request lifecycle
 
 1. **User query** arrives from the Next.js workspace (streaming chat).
