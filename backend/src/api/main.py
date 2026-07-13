@@ -50,6 +50,42 @@ app.include_router(saas_router)
 app.include_router(team_router)
 
 
+@app.on_event("startup")
+def _warm_indexes() -> None:
+    """Rebuild the BM25 index + entity graph from the shared vector store on boot.
+
+    We seed the vector store (Supabase) from a laptop because the Render free tier
+    has no shell, and Render's disk is ephemeral — so the file-based BM25 index and
+    entity graph aren't present on the server. Since the vector store already holds
+    every chunk's text, we can regenerate both from it, making hybrid search and
+    GraphRAG work in production. Runs only when the BM25 file is missing (once per
+    cold start) and never blocks startup on failure.
+    """
+    import logging
+    import os
+
+    log = logging.getLogger(__name__)
+    try:
+        from src.ingestion.embed import Embedder
+        from src.retrieval.bm25 import BM25Index, bm25_path
+        from src.retrieval.graph import EntityGraph, graph_path
+        from src.retrieval.store import get_vector_store
+
+        if os.path.exists(bm25_path()):
+            return
+        embedder = Embedder(settings)
+        store = get_vector_store(embedder.dim, embedder.name, settings)
+        if store.count() <= 0:
+            log.info("warm_indexes: vector store empty, nothing to rebuild")
+            return
+        chunks = store.iter_all()
+        BM25Index.build(chunks, bm25_path())
+        EntityGraph.build(store, graph_path())
+        log.info("warm_indexes: rebuilt BM25 + graph from %d chunks", len(chunks))
+    except Exception:  # noqa: BLE001
+        log.exception("warm_indexes: rebuild failed (hybrid may be degraded)")
+
+
 @app.middleware("http")
 async def security_headers(request, call_next):
     resp = await call_next(request)
