@@ -28,8 +28,16 @@ def hybrid_search(
     candidate_k: int = 30,
     tickers: list[str] | None = None,
     workspaces: list[str] | None = None,
+    use_dense: bool = True,
 ) -> list[RetrievedChunk]:
-    dense_hits = store.search(query_vec, k=candidate_k, tickers=tickers, workspaces=workspaces)
+    # With the deterministic `hash` embedder, dense cosine similarity is essentially
+    # noise and only dilutes BM25's ranking under RRF — so callers disable dense and
+    # run lexical-only. (Real embeddings restore semantic dense retrieval.)
+    dense_hits = (
+        store.search(query_vec, k=candidate_k, tickers=tickers, workspaces=workspaces)
+        if use_dense
+        else []
+    )
     bm25_hits = (
         bm25.query(query_text, k=candidate_k, tickers=tickers, workspaces=workspaces)
         if bm25

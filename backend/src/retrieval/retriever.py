@@ -37,6 +37,26 @@ class Retriever:
         self.bm25 = bm25 if bm25 is not None else BM25Index.load(bm25_path())
         self.reranker = reranker or Reranker(self.settings)
 
+    def _ensure_bm25(self) -> None:
+        """Lazily (re)build the BM25 index from the vector store when it's absent.
+
+        On Render the disk is ephemeral and the corpus is seeded from a laptop, so
+        the BM25 file often isn't present. Since the vector store holds every chunk,
+        we rebuild the lexical index on the first query and cache it in this
+        process-wide singleton. Critical for the offline/hash embedding stack, where
+        dense similarity is weak and BM25 does most of the retrieval work.
+        """
+        if self.bm25 is not None and len(self.bm25) > 0:
+            return
+        try:
+            if self.store.count() <= 0:
+                return
+            chunks = self.store.iter_all()
+            self.bm25 = BM25Index.build(chunks, bm25_path())
+            logger.info("Lazily rebuilt BM25 from vector store: %d docs", len(self.bm25))
+        except Exception:  # noqa: BLE001
+            logger.exception("lazy BM25 rebuild failed")
+
     def retrieve(
         self,
         query: str,
@@ -45,6 +65,7 @@ class Retriever:
         tickers: list[str] | None = None,
         workspaces: list[str] | None = None,
     ) -> RetrievalResult:
+        self._ensure_bm25()
         query_vec = self.embedder.embed([query])[0]
         fused = hybrid_search(
             query_vec,
@@ -54,6 +75,8 @@ class Retriever:
             candidate_k=candidate_k,
             tickers=tickers,
             workspaces=workspaces,
+            # Hash embeddings are non-semantic — lexical-only avoids RRF dilution.
+            use_dense=self.embedder.backend != "hash",
         )
         reranked = self.reranker.rerank(query, fused, top_k=top_k)
         citations = assign_citations(reranked)
