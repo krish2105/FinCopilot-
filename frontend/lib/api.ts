@@ -130,6 +130,59 @@ export interface Watchlist {
   created_at?: string;
 }
 
+// ---- Valuation / screener (Phase 48) ----
+export interface Dcf {
+  ticker: string;
+  fair_value_per_share: number | null;
+  market_price: number | null;
+  upside_pct: number | null;
+  enterprise_value: number;
+  equity_value: number;
+  terminal_value: number;
+  projected_fcf: { year: number; fcf: number; pv: number }[];
+  assumptions: {
+    base_fcf: number;
+    growth_rate: number;
+    terminal_growth: number;
+    discount_rate: number;
+    years: number;
+    net_cash: number;
+    shares: number | null;
+  };
+  sensitivity: { growth_rates: number[]; discount_rates: number[]; grid: (number | null)[][] };
+  disclaimer: string;
+}
+
+export interface ScreenResult {
+  count: number;
+  fields: string[];
+  results: Record<string, number | string | null>[];
+}
+
+export interface IncomeFlow {
+  ticker: string;
+  revenue: number;
+  net_income: number | null;
+  links: { source: string; target: string; value: number }[];
+}
+
+// ---- Graph visualizations (Phase 47) ----
+export interface RiskHeatmap {
+  companies: string[];
+  topics: string[];
+  matrix: number[][];
+}
+export interface GraphNode {
+  id: string;
+  label: string;
+  kind: string;
+  degree?: number;
+}
+export interface GraphNetwork {
+  nodes: GraphNode[];
+  links: { source: string; target: string }[];
+}
+
 // ---- Insight layer (Phase 40) ----
 export interface RiskChange {
   change: string; // new | removed | escalated
@@ -463,6 +516,27 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
   deleteApiKey: (id: string) => req(`/api-keys/${id}`, { method: "DELETE" }),
+  // valuation + screener (Phase 48)
+  dcf: (ticker: string) => req<Dcf>(`/valuation/dcf/${encodeURIComponent(ticker)}`),
+  dcfCustom: (ticker: string, overrides: Record<string, number>) =>
+    req<Dcf>(`/valuation/dcf/${encodeURIComponent(ticker)}`, {
+      method: "POST",
+      body: JSON.stringify(overrides),
+    }),
+  screen: (filters: { field: string; op: string; value: number }[]) =>
+    req<ScreenResult>("/valuation/screener", {
+      method: "POST",
+      body: JSON.stringify({ filters }),
+    }),
+  screenerFields: () => req<{ fields: string[] }>("/valuation/screener/fields"),
+  incomeFlow: (ticker: string) => req<IncomeFlow>(`/xbrl/income-flow/${encodeURIComponent(ticker)}`),
+  xbrlSeries: (ticker: string, metric: string, years = 6) =>
+    req<{ ticker: string; metric: string; points: { fiscal_year: number; value: number }[] }>(
+      `/xbrl/series/${encodeURIComponent(ticker)}/${metric}?years=${years}`,
+    ),
+  // graph visualizations (Phase 47)
+  graphHeatmap: () => req<RiskHeatmap>("/graph/heatmap"),
+  graphNetwork: () => req<GraphNetwork>("/graph/network"),
   // insights (Phase 40)
   riskDiff: (ticker: string) => req<RiskDiff>(`/insights/risk-diff/${encodeURIComponent(ticker)}`),
   redFlags: (ticker: string) =>

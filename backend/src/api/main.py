@@ -167,6 +167,28 @@ def graph_stats() -> dict[str, object]:
     return {"built": True, **graph.stats()}
 
 
+@app.get("/graph/heatmap")
+def graph_heatmap() -> dict[str, object]:
+    """Companies × risk-topics exposure matrix (Phase 47 risk heatmap)."""
+    from src.retrieval.graph import EntityGraph, graph_path
+
+    graph = EntityGraph.load(graph_path())
+    if graph is None:
+        return {"companies": [], "topics": [], "matrix": []}
+    return graph.risk_matrix()
+
+
+@app.get("/graph/network")
+def graph_network() -> dict[str, object]:
+    """Company↔risk network (Phase 47 entity-graph visualization)."""
+    from src.retrieval.graph import EntityGraph, graph_path
+
+    graph = EntityGraph.load(graph_path())
+    if graph is None:
+        return {"nodes": [], "links": []}
+    return graph.network()
+
+
 @app.get("/eval")
 def eval_results() -> dict[str, object]:
     """Latest RAGAS/eval results for the evaluation dashboard (Phase 7)."""

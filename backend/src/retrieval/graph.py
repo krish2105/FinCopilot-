@@ -225,6 +225,50 @@ class EntityGraph:
             "risk_topics": self.risk_topics(),
         }
 
+    # --- visualization exports (Phase 47) ---
+    def risk_matrix(self, tickers: list[str] | None = None) -> dict:
+        """Companies x risk-topics exposure matrix — the data behind the risk heatmap."""
+        companies = sorted(
+            [c for c in self.companies() if not tickers or c.upper() in {t.upper() for t in tickers}]
+        )
+        exposure = {c: set(self.risks_for_company(c)) for c in companies}
+        # Keep the topics that at least one company in the set actually discloses,
+        # ordered by how widely shared they are (most concentrated risks first).
+        topic_count: dict[str, int] = {}
+        for risks in exposure.values():
+            for t in risks:
+                topic_count[t] = topic_count.get(t, 0) + 1
+        topics = sorted(topic_count, key=lambda t: (-topic_count[t], t))
+        return {
+            "companies": companies,
+            "topics": topics,
+            "matrix": [[1 if t in exposure[c] else 0 for t in topics] for c in companies],
+        }
+
+    def network(self, tickers: list[str] | None = None, max_nodes: int = 60) -> dict:
+        """A company↔risk graph shaped for a network diagram (nodes + links)."""
+        companies = [
+            c for c in self.companies() if not tickers or c.upper() in {t.upper() for t in tickers}
+        ]
+        nodes: dict[str, dict] = {}
+        links: list[dict] = []
+        for c in companies:
+            nodes[c] = {"id": c, "label": c, "kind": "company"}
+            for topic in self.risks_for_company(c):
+                rid = f"risk:{topic}"
+                nodes.setdefault(rid, {"id": rid, "label": topic, "kind": "risk"})
+                links.append({"source": c, "target": rid})
+                if len(nodes) >= max_nodes:
+                    break
+        # Weight risk nodes by how many companies point at them (shared = important).
+        degree: dict[str, int] = {}
+        for link in links:
+            degree[link["target"]] = degree.get(link["target"], 0) + 1
+        for rid, d in degree.items():
+            if rid in nodes:
+                nodes[rid]["degree"] = d
+        return {"nodes": list(nodes.values()), "links": links}
+
 
 def graph_path() -> str:
     return os.path.join(get_settings().data_dir, "entity_graph.json")
