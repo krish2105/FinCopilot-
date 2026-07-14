@@ -94,12 +94,23 @@ class ProviderRouter:
         stub_text: str | None = None,
         trace: list | None = None,
     ) -> str:
-        if self.mode == "stub" and stub_text is not None:
-            est = (len(prompt) + len(system or "") + len(stub_text)) // 4
+        def _stub() -> str:
+            est = (len(prompt) + len(system or "") + len(stub_text or "")) // 4
             self._record(trace, "stub", "stub-llm-v1", cached=False, latency_ms=0, tokens=est)
-            return stub_text
-        resp = self._complete(prompt, system, json_mode=False, trace=trace)
-        return resp.text
+            return stub_text or ""
+
+        if self.mode == "stub" and stub_text is not None:
+            return _stub()
+        try:
+            return self._complete(prompt, system, json_mode=False, trace=trace).text
+        except ProviderError as exc:
+            # Free tiers run dry and preview models return 503. If the whole chain is
+            # exhausted, degrade to the deterministic extractive answer rather than
+            # failing the user's request outright — same contract as `structured()`.
+            if stub_text is None:
+                raise
+            logger.warning("All providers failed for text call; using stub. %s", exc)
+            return _stub()
 
     def structured(
         self,
