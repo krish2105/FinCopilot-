@@ -9,8 +9,8 @@ from __future__ import annotations
 
 # USD per 1M tokens (blended input+output estimate).
 MODEL_PRICE_PER_M: dict[str, float] = {
-    "gemini-2.5-flash-lite": 0.15,
-    "gemini-2.5-flash": 0.30,
+    "gemini-3.1-flash-lite": 0.15,
+    "gemini-3-flash-preview": 0.30,
     "llama-3.3-70b-versatile": 0.59,
     "openai/gpt-oss-120b": 0.30,
     "stub-llm-v1": 0.0,

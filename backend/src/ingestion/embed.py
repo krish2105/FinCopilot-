@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import time
 
 from src.config.settings import Settings, get_settings
@@ -25,6 +26,45 @@ _HASH_DIM = 384
 _ST_MODEL = "BAAI/bge-small-en-v1.5"  # 384 dims
 _GEMINI_MODEL = "gemini-embedding-001"
 _GEMINI_DIM = 768
+
+# --- Gemini free-tier quota control -------------------------------------------
+# The free tier caps embedding *tokens per minute*, not just requests. Bulk seeding
+# a corpus blows through it in seconds, and a 429 means "you must wait out the
+# current minute" — a 1/2/4/8s backoff can never clear it. So we (a) pace requests
+# against a rolling token budget and (b) cool down a full minute on a quota error.
+# Override via GEMINI_EMBED_TPM if your key has a higher tier.
+_GEMINI_TPM = int(os.getenv("GEMINI_EMBED_TPM", "25000"))  # under the ~30k free cap
+_QUOTA_COOLDOWN_S = 65
+_MAX_EMBED_RETRIES = 8
+
+_QUOTA_MARKERS = ("429", "resource_exhausted", "resource exhausted", "quota", "rate limit")
+_token_window: list[tuple[float, int]] = []  # rolling (timestamp, tokens) over 60s
+
+
+def _est_tokens(text: str) -> int:
+    return max(1, len(text) // 4)
+
+
+def _is_quota_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return any(m in msg for m in _QUOTA_MARKERS)
+
+
+def _throttle(tokens: int) -> None:
+    """Block until `tokens` fit inside the rolling per-minute budget."""
+    while True:
+        now = time.monotonic()
+        while _token_window and now - _token_window[0][0] > 60.0:
+            _token_window.pop(0)
+        used = sum(t for _, t in _token_window)
+        if used + tokens <= _GEMINI_TPM or not _token_window:
+            _token_window.append((now, tokens))
+            return
+        sleep_for = 60.0 - (now - _token_window[0][0]) + 0.5
+        logger.info(
+            "embed throttle: %d tok used in the last minute; sleeping %.1fs", used, sleep_for
+        )
+        time.sleep(max(0.5, sleep_for))
 
 
 def resolve_backend(settings: Settings) -> str:
@@ -86,6 +126,9 @@ class Embedder:
         from google import genai
         from google.genai import types
 
+        # Stay inside the free tier's tokens-per-minute budget before calling.
+        _throttle(sum(_est_tokens(t) for t in texts))
+
         client = genai.Client(api_key=self.settings.gemini_api_key)
         try:
             resp = client.models.embed_content(
@@ -95,13 +138,24 @@ class Embedder:
             )
             return [list(e.values) for e in resp.embeddings]
         except Exception as exc:
-            # Bounded backoff; we do NOT fall through to a different dim.
-            if _attempt < 4:
-                wait = 2**_attempt
+            # A 429 is a *quota window*, not a transient blip: short backoff can never
+            # clear it. Wait out the full minute and retry generously. We never fall
+            # through to another backend — that would corrupt the corpus with mixed dims.
+            if _attempt >= _MAX_EMBED_RETRIES:
+                raise
+            if _is_quota_error(exc):
+                wait = _QUOTA_COOLDOWN_S
+                logger.warning(
+                    "Gemini embed hit the quota window; cooling down %ss (attempt %d/%d)",
+                    wait,
+                    _attempt + 1,
+                    _MAX_EMBED_RETRIES,
+                )
+            else:
+                wait = min(2**_attempt, 30)
                 logger.warning("Gemini embed failed (%s); retry in %ss", exc, wait)
-                time.sleep(wait)
-                return self._embed_gemini(texts, _attempt + 1)
-            raise
+            time.sleep(wait)
+            return self._embed_gemini(texts, _attempt + 1)
 
     def _embed_hash(self, text: str) -> list[float]:
         """Signed hashing bag-of-words, L2-normalized.

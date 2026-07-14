@@ -1,9 +1,9 @@
 """LLM provider router with automatic fallback, backoff, caching, and tracing.
 
-Fallback chain (per the plan):
-  1. Gemini 2.5 Flash-Lite   (default: routing, simple retrieval, summarization)
-  2. Gemini 2.5 Flash        (higher-quality synthesis)
-  3. Groq llama-3.3-70b      (fast fallback)
+Fallback chain:
+  1. Gemini 3.1 Flash-Lite    (default: routing, simple retrieval, summarization)
+  2. Gemini 3 Flash           (higher-quality synthesis)
+  3. Groq llama-3.3-70b       (fast fallback)
   4. Groq openai/gpt-oss-120b (secondary fallback)
 
 On a rate limit we back off and retry the same provider briefly, then fall
@@ -37,8 +37,10 @@ from src.providers.stub import StubProvider
 
 logger = logging.getLogger(__name__)
 
-GEMINI_FLASH_LITE = "gemini-2.5-flash-lite"
-GEMINI_FLASH = "gemini-2.5-flash"
+# Verified against the live Gemini API (2026-07): the 2.5 models now return
+# 404 "no longer available to new users", so the chain targets current models.
+GEMINI_FLASH_LITE = "gemini-3.1-flash-lite"
+GEMINI_FLASH = "gemini-3-flash-preview"
 GROQ_LLAMA = "llama-3.3-70b-versatile"
 GROQ_GPT_OSS = "openai/gpt-oss-120b"
 
