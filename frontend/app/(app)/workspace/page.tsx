@@ -35,6 +35,11 @@ function WorkspaceInner() {
   const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
   const [roomId, setRoomId] = useState<string>("");
   const [input, setInput] = useState("");
+  const [profile, setProfile] = useState<{
+    returning: boolean;
+    top_tickers: string[];
+    recent_questions: { query: string }[];
+  } | null>(null);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [loading, setLoading] = useState(false);
   const [slow, setSlow] = useState(false);
@@ -68,6 +73,10 @@ function WorkspaceInner() {
     api
       .workspaces()
       .then((r) => setRooms(r.workspaces.map((w) => ({ id: w.id, name: w.name }))))
+      .catch(() => {});
+    api
+      .profile()
+      .then(setProfile)
       .catch(() => {});
   }, []);
 
@@ -172,6 +181,30 @@ function WorkspaceInner() {
               A team of agents retrieves evidence, runs the analysis, checks compliance, and
               returns a fully cited answer — or refuses when the evidence isn&apos;t there.
             </p>
+            {profile?.returning && profile.recent_questions.length > 0 && (
+              <div className="mt-6 w-full rounded-xl border border-accent/25 bg-accent/[0.06] p-4 text-left">
+                <p className="text-xs font-medium text-foreground">
+                  Welcome back
+                  {profile.top_tickers.length > 0 && (
+                    <span className="text-muted-foreground">
+                      {" "}— you&apos;ve been researching{" "}
+                      <span className="font-mono text-accent">{profile.top_tickers.slice(0, 3).join(", ")}</span>
+                    </span>
+                  )}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {profile.recent_questions.slice(0, 4).map((r) => (
+                    <button
+                      key={r.query}
+                      onClick={() => submit(r.query)}
+                      className="rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-accent/40 hover:text-foreground cursor-pointer"
+                    >
+                      {r.query.length > 44 ? r.query.slice(0, 44) + "…" : r.query}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="mt-7 w-full">
               <Onboarding
                 steps={[

@@ -550,6 +550,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ tickers }),
     }),
+  // personalization (Phase 49)
+  profile: () =>
+    req<{
+      total_queries: number;
+      top_tickers: string[];
+      recent_questions: { query: string; route: string; verdict: string }[];
+      returning: boolean;
+    }>("/me/profile"),
   // watchlist (Phase 34)
   watchlists: () => req<{ watchlists: Watchlist[] }>("/watchlists"),
   addWatch: (ticker: string) =>

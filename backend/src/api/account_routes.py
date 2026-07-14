@@ -19,6 +19,15 @@ router = APIRouter(tags=["account"])
 _TABLES = ("audit", "usage_events", "conversations", "documents", "workspaces")
 
 
+@router.get("/me/profile")
+def me_profile(principal: Principal = Depends(get_principal)) -> dict:
+    """Personalization derived from the audit trail — context, never cached facts."""
+    from src.db.database import get_db
+    from src.tenancy.profile import build_profile
+
+    return build_profile(get_db(), principal.org_id)
+
+
 @router.get("/account/export")
 def export_account(principal: Principal = Depends(get_principal)) -> dict:
     db = get_db()
