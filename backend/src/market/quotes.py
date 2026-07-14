@@ -46,7 +46,11 @@ _YF_RANGE: dict[str, tuple[str, str]] = {
     "5Y": ("5y", "1wk"),
 }
 
-_FMP_BASE = "https://financialmodelingprep.com/api/v3"
+# FMP moved to a "stable" API; newly-issued free keys no longer have access to the
+# legacy /api/v3 endpoints (they return an auth/plan error). Try stable first and
+# fall back to v3 so both old and new keys work.
+_FMP_STABLE = "https://financialmodelingprep.com/stable"
+_FMP_V3 = "https://financialmodelingprep.com/api/v3"
 _CACHE: dict[str, tuple[float, Any]] = {}
 
 
@@ -73,24 +77,25 @@ def _fmp_key() -> str | None:
     return get_settings().fmp_api_key or None
 
 
-def _fmp_get(path: str, params: dict[str, Any]) -> Any | None:
+def _fmp_get(base: str, path: str, params: dict[str, Any]) -> Any | None:
     key = _fmp_key()
     if not key:
         return None
     import requests
 
     try:
-        resp = requests.get(
-            f"{_FMP_BASE}/{path}",
-            params={**params, "apikey": key},
-            timeout=15,
-        )
+        resp = requests.get(f"{base}/{path}", params={**params, "apikey": key}, timeout=15)
         if resp.status_code != 200:
-            logger.warning("FMP %s -> HTTP %s", path, resp.status_code)
+            logger.warning("FMP %s/%s -> HTTP %s: %s", base, path, resp.status_code, resp.text[:120])
             return None
-        return resp.json()
+        data = resp.json()
+        # FMP returns {"Error Message": ...} with HTTP 200 for plan/auth problems.
+        if isinstance(data, dict) and ("Error Message" in data or "error" in data):
+            logger.warning("FMP %s/%s -> %s", base, path, str(data)[:120])
+            return None
+        return data
     except Exception as exc:  # noqa: BLE001
-        logger.warning("FMP %s failed: %s", path, exc)
+        logger.warning("FMP %s/%s failed: %s", base, path, exc)
         return None
 
 
@@ -98,7 +103,9 @@ def _fmp_get(path: str, params: dict[str, Any]) -> Any | None:
 # Quote
 # --------------------------------------------------------------------------- #
 def _fmp_quote(ticker: str) -> dict[str, Any] | None:
-    data = _fmp_get(f"quote/{ticker.upper()}", {})
+    sym = ticker.upper()
+    # stable: /quote?symbol=AAPL   |   legacy v3: /quote/AAPL
+    data = _fmp_get(_FMP_STABLE, "quote", {"symbol": sym}) or _fmp_get(_FMP_V3, f"quote/{sym}", {})
     if not isinstance(data, list) or not data:
         return None
     d = data[0]
@@ -106,15 +113,18 @@ def _fmp_quote(ticker: str) -> dict[str, Any] | None:
     if price is None:
         return None
     prev = _f(d.get("previousClose"))
+    # stable renamed changesPercentage -> changePercentage
+    pct = _f(d.get("changePercentage"))
+    if pct is None:
+        pct = _f(d.get("changesPercentage"))
+    change = _f(d.get("change"))
     return {
-        "ticker": ticker.upper(),
-        "name": d.get("name") or ticker.upper(),
+        "ticker": sym,
+        "name": d.get("name") or sym,
         "price": round(price, 2),
         "previous_close": round(prev, 2) if prev is not None else None,
-        "change": round(_f(d.get("change")) or 0.0, 2) if d.get("change") is not None else None,
-        "change_pct": round(_f(d.get("changesPercentage")) or 0.0, 2)
-        if d.get("changesPercentage") is not None
-        else None,
+        "change": round(change, 2) if change is not None else None,
+        "change_pct": round(pct, 2) if pct is not None else None,
         "currency": "USD",
         "market_cap": _f(d.get("marketCap")),
         "day_high": _f(d.get("dayHigh")),
@@ -196,27 +206,31 @@ def _downsample(points: list[dict[str, Any]], stride: int) -> list[dict[str, Any
 
 
 def _fmp_history(ticker: str, rng: str) -> dict[str, Any] | None:
+    sym = ticker.upper()
     days, stride = RANGE_MAP[rng]
-    frm = (date.today() - timedelta(days=days)).isoformat()
-    to = date.today().isoformat()
-    data = _fmp_get(
-        f"historical-price-full/{ticker.upper()}",
-        {"from": frm, "to": to},
-    )
-    hist = (data or {}).get("historical") if isinstance(data, dict) else None
-    if not hist:
+    window = {"from": (date.today() - timedelta(days=days)).isoformat(), "to": date.today().isoformat()}
+
+    # stable returns a bare list; legacy v3 wraps rows in {"historical": [...]}.
+    data = _fmp_get(_FMP_STABLE, "historical-price-eod/full", {"symbol": sym, **window})
+    rows = data if isinstance(data, list) else None
+    if rows is None:
+        data = _fmp_get(_FMP_V3, f"historical-price-full/{sym}", window)
+        rows = data.get("historical") if isinstance(data, dict) else None
+    if not rows:
         return None
+
     points = [
         {"x": row["date"], "y": round(c, 2)}
-        for row in reversed(hist)  # FMP returns newest-first
+        for row in rows
         if row.get("date") and (c := _f(row.get("close"))) is not None
     ]
     if not points:
         return None
+    points.sort(key=lambda p: p["x"])  # FMP returns newest-first; charts want oldest-first
     points = _downsample(points, stride)
     first, last = points[0]["y"], points[-1]["y"]
     return {
-        "ticker": ticker.upper(),
+        "ticker": sym,
         "range": rng,
         "points": points,
         "change_pct": round((last - first) / first * 100, 2) if first else None,
@@ -272,7 +286,11 @@ def get_history(ticker: str, rng: str = "1Y") -> dict[str, Any] | None:
 # Earnings
 # --------------------------------------------------------------------------- #
 def _fmp_earnings(ticker: str) -> dict[str, Any] | None:
-    data = _fmp_get(f"historical/earning_calendar/{ticker.upper()}", {"limit": 20})
+    sym = ticker.upper()
+    # stable: /earnings?symbol=AAPL (epsActual)  |  v3: /historical/earning_calendar/AAPL (eps)
+    data = _fmp_get(_FMP_STABLE, "earnings", {"symbol": sym, "limit": 20})
+    if not isinstance(data, list) or not data:
+        data = _fmp_get(_FMP_V3, f"historical/earning_calendar/{sym}", {"limit": 20})
     if not isinstance(data, list) or not data:
         return None
     today = date.today().isoformat()
@@ -283,7 +301,7 @@ def _fmp_earnings(ticker: str) -> dict[str, Any] | None:
         if not d:
             continue
         d = d[:10]
-        eps = _f(row.get("eps"))
+        eps = _f(row.get("epsActual")) if row.get("epsActual") is not None else _f(row.get("eps"))
         est = _f(row.get("epsEstimated"))
         if eps is None:
             if d >= today:
@@ -302,7 +320,7 @@ def _fmp_earnings(ticker: str) -> dict[str, Any] | None:
     next_date = min(future) if future else None
     if not past and next_date is None:
         return None
-    return {"ticker": ticker.upper(), "next_date": next_date, "history": past[:6], "source": "fmp"}
+    return {"ticker": sym, "next_date": next_date, "history": past[:6], "source": "fmp"}
 
 
 def _yf_earnings(ticker: str) -> dict[str, Any] | None:
