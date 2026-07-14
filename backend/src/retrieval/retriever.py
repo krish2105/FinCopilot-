@@ -90,7 +90,17 @@ class Retriever:
         workspaces: list[str] | None = None,
     ) -> RetrievalResult:
         self._ensure_bm25()
-        query_vec = self.embedder.embed([query])[0]
+
+        # Dense search is *optional*. It's skipped when:
+        #  - the embedder is `hash` (non-semantic; it only dilutes RRF), or
+        #  - the embedding provider is out of quota (free tiers run dry) — in which
+        #    case we fail fast rather than hang the user's request.
+        # Lexical search (Postgres FTS) still answers well on its own.
+        query_vec = self.embedder.try_embed_query(query)
+        use_dense = query_vec is not None and self.embedder.backend != "hash"
+        if query_vec is None:
+            query_vec = [0.0] * self.embedder.dim  # unused when use_dense is False
+
         fused = hybrid_search(
             query_vec,
             query,
@@ -99,8 +109,7 @@ class Retriever:
             candidate_k=candidate_k,
             tickers=tickers,
             workspaces=workspaces,
-            # Hash embeddings are non-semantic — lexical-only avoids RRF dilution.
-            use_dense=self.embedder.backend != "hash",
+            use_dense=use_dense,
         )
         reranked = self.reranker.rerank(query, fused, top_k=top_k)
         citations = assign_citations(reranked)

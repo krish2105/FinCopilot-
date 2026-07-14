@@ -117,26 +117,50 @@ class Embedder:
             return self._embed_st(texts)
         return [self._embed_hash(t) for t in texts]
 
+    def try_embed_query(self, text: str) -> list[float] | None:
+        """Embed a single query, or return None if the provider is out of quota.
+
+        Bulk ingestion can afford to wait out a quota window; a user's query cannot
+        — retrying for minutes would hang the request. On a free tier the embedding
+        quota routinely runs out, so the query path fails fast and the retriever
+        degrades to lexical-only search (Postgres FTS), which still answers well.
+        """
+        try:
+            if self.backend == "gemini":
+                # Raw call: no ingest throttle (never make a user wait on the bulk
+                # token budget) and no retries (fail fast, degrade to lexical).
+                return self._gemini_call([text])[0]
+            return self.embed([text])[0]
+        except Exception as exc:  # noqa: BLE001
+            if _is_quota_error(exc):
+                logger.warning("embed quota exhausted; falling back to lexical-only search")
+            else:
+                logger.warning("query embedding failed (%s); lexical-only search", exc)
+            return None
+
     # --- backends ---
     def _embed_st(self, texts: list[str]) -> list[list[float]]:
         vecs = self._st_model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
         return [v.tolist() for v in vecs]
 
-    def _embed_gemini(self, texts: list[str], _attempt: int = 0) -> list[list[float]]:
+    def _gemini_call(self, texts: list[str]) -> list[list[float]]:
+        """One raw embedding request — no throttle, no retries."""
         from google import genai
         from google.genai import types
 
-        # Stay inside the free tier's tokens-per-minute budget before calling.
-        _throttle(sum(_est_tokens(t) for t in texts))
-
         client = genai.Client(api_key=self.settings.gemini_api_key)
+        resp = client.models.embed_content(
+            model=_GEMINI_MODEL,
+            contents=texts,
+            config=types.EmbedContentConfig(output_dimensionality=_GEMINI_DIM),
+        )
+        return [list(e.values) for e in resp.embeddings]
+
+    def _embed_gemini(self, texts: list[str], _attempt: int = 0) -> list[list[float]]:
+        # Bulk path: stay inside the free tier's tokens-per-minute budget.
+        _throttle(sum(_est_tokens(t) for t in texts))
         try:
-            resp = client.models.embed_content(
-                model=_GEMINI_MODEL,
-                contents=texts,
-                config=types.EmbedContentConfig(output_dimensionality=_GEMINI_DIM),
-            )
-            return [list(e.values) for e in resp.embeddings]
+            return self._gemini_call(texts)
         except Exception as exc:
             # A 429 is a *quota window*, not a transient blip: short backoff can never
             # clear it. Wait out the full minute and retry generously. We never fall
