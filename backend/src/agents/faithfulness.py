@@ -35,6 +35,10 @@ _ANSWER_NUM_RE = re.compile(
 )
 
 _MIN_OVERLAP = 0.18  # below this, a marker-less sentence is deemed unsupported
+# Refuse only when *most* of the answer is unsupported. A single hedged sentence
+# flagged by a conservative judge should not discard an otherwise well-cited answer
+# (ungrounded numbers / bad arithmetic still refuse unconditionally — see _decide).
+_MIN_FAITHFUL_SCORE = 0.6
 
 _FAITH_SYSTEM = (
     "You are a strict fact-checker. Given an answer and the evidence it should be "
@@ -116,26 +120,52 @@ def verify(
             if overlap < _MIN_OVERLAP and not has_marker:
                 unsupported.append(clean[:120])
 
-    total = max(1, len(sentences))
-    score = max(0.0, 1.0 - (len(unsupported) + len(ungrounded_numbers)) / total)
-    faithful = not ungrounded_numbers and not unsupported
-
-    verdict = FaithfulnessVerdict(
-        faithful=faithful,
-        score=round(score, 3),
-        unsupported_claims=unsupported,
-        ungrounded_numbers=ungrounded_numbers,
-        reason=_reason(ungrounded_numbers, unsupported),
-    )
+    verdict = _decide(sentences, unsupported, ungrounded_numbers, arithmetic_errors)
 
     # Live: the LLM judges semantic support. It can never excuse an ungrounded
     # number or a bad calculation — those guardrails are already baked into
     # `verdict` and are preserved through the refinement.
     if live:
-        verdict = _llm_refine(router, answer, evidence_text, verdict, trace)
+        verdict = _llm_refine(
+            router, answer, evidence_text, verdict, trace, sentences, arithmetic_errors
+        )
 
     logger.info("faithfulness: %s score=%.2f", verdict.faithful, verdict.score)
     return verdict
+
+
+def _decide(
+    sentences: list[str],
+    unsupported: list[str],
+    ungrounded_numbers: list[str],
+    arithmetic_errors: list[str],
+) -> FaithfulnessVerdict:
+    """Turn the individual checks into a verdict.
+
+    Two classes of problem, deliberately treated differently:
+
+    * **Hard** — an ungrounded figure or a wrong calculation. These are precise,
+      objective, and exactly what this product promises never to emit. Any single
+      one refuses the answer.
+    * **Soft** — a claim a judge merely *thinks* isn't clearly supported. Judges are
+      conservative and routinely flag a hedge or a summarising sentence. Refusing a
+      well-cited answer over one such sentence throws away a good answer, so soft
+      doubts are scored: we only refuse when they dominate the answer.
+    """
+    total = max(1, len(sentences))
+    soft = [u for u in unsupported if u not in arithmetic_errors]
+    score = max(0.0, 1.0 - (len(unsupported) + len(ungrounded_numbers)) / total)
+
+    hard_fail = bool(ungrounded_numbers) or bool(arithmetic_errors)
+    faithful = not hard_fail and score >= _MIN_FAITHFUL_SCORE
+
+    return FaithfulnessVerdict(
+        faithful=faithful,
+        score=round(score, 3),
+        unsupported_claims=unsupported,
+        ungrounded_numbers=ungrounded_numbers,
+        reason=_reason(ungrounded_numbers, soft),
+    )
 
 
 def _reason(ungrounded: list[str], unsupported: list[str]) -> str:
@@ -155,6 +185,8 @@ def _llm_refine(
     evidence_text: str,
     base: FaithfulnessVerdict,
     trace: list | None,
+    sentences: list[str] | None = None,
+    arithmetic_errors: list[str] | None = None,
 ) -> FaithfulnessVerdict:
     prompt = (
         f"Evidence:\n{evidence_text[:6000]}\n\nAnswer:\n{answer}\n\n"
@@ -163,13 +195,13 @@ def _llm_refine(
     llm = router.structured(
         prompt, FaithfulnessVerdict, system=_FAITH_SYSTEM, stub=lambda: base, trace=trace
     )
-    # Combine: stricter of the two, and always keep the numeric guardrail.
+    # Union the doubts, then apply the same rule as everywhere else: hard guardrails
+    # (ungrounded figures, bad arithmetic) refuse outright; the judge's semantic
+    # doubts are scored, so one flagged sentence can't discard a well-cited answer.
     unsupported = sorted(set(base.unsupported_claims) | set(llm.unsupported_claims))
-    faithful = base.faithful and llm.faithful
-    return FaithfulnessVerdict(
-        faithful=faithful,
-        score=min(base.score, llm.score if llm.score else base.score),
-        unsupported_claims=unsupported,
-        ungrounded_numbers=base.ungrounded_numbers,
-        reason=_reason(base.ungrounded_numbers, unsupported),
+    return _decide(
+        sentences or [],
+        unsupported,
+        base.ungrounded_numbers,
+        arithmetic_errors or [],
     )
