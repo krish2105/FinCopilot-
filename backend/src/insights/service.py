@@ -12,6 +12,7 @@ from collections import defaultdict
 
 from src.agents.compliance import check as compliance_check
 from src.insights.schemas import (
+    FundamentalPoint,
     Fundamentals,
     PeerRow,
     PeerTable,
@@ -186,7 +187,44 @@ def portfolio_overlap(graph, tickers: list[str]) -> PortfolioOverlap:
 # 40c — Fundamentals + peer benchmarking
 # --------------------------------------------------------------------------- #
 def fundamentals(ticker: str) -> Fundamentals:
-    f = quotes.get_fundamentals(ticker)
+    """Revenue / margins / EPS by year — from SEC XBRL first.
+
+    XBRL is free, keyless and uncapped, so fundamentals no longer burn a 250-calls-a-day
+    vendor allowance, and the figures are the ones the company actually filed rather
+    than a vendor's normalisation of them. FMP stays as a fallback for anything the SEC
+    doesn't cover (e.g. non-US filers).
+    """
+    from src.db.database import get_db
+    from src.xbrl import lookup as xl
+
+    db = get_db()
+    try:
+        revenue = {p["fiscal_year"]: p for p in xl.series(db, ticker, "revenue", years=6)}
+    except Exception as exc:  # noqa: BLE001 — no xbrl_facts table yet, or DB unavailable
+        logger.info("xbrl fundamentals unavailable (%s); falling back to the vendor feed", exc)
+        revenue = {}
+    if revenue:
+        net = {p["fiscal_year"]: p["value"] for p in xl.series(db, ticker, "net_income", years=6)}
+        gross = {p["fiscal_year"]: p["value"] for p in xl.series(db, ticker, "gross_profit", years=6)}
+        eps = {p["fiscal_year"]: p["value"] for p in xl.series(db, ticker, "eps_diluted", years=6)}
+
+        points = []
+        for fy in sorted(revenue, reverse=True):
+            rev = revenue[fy]["value"]
+            ni, gp = net.get(fy), gross.get(fy)
+            points.append(
+                FundamentalPoint(
+                    period=str(fy),
+                    revenue=rev,
+                    net_income=ni,
+                    gross_margin=round(gp / rev * 100, 2) if rev and gp is not None else None,
+                    net_margin=round(ni / rev * 100, 2) if rev and ni is not None else None,
+                    eps=eps.get(fy),
+                )
+            )
+        return Fundamentals(ticker=ticker.upper(), points=points, source="sec-xbrl")
+
+    f = quotes.get_fundamentals(ticker)  # fallback: non-US filers, etc.
     if not f:
         return Fundamentals(ticker=ticker.upper(), points=[], source="")
     return Fundamentals(**f)

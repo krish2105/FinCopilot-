@@ -14,6 +14,7 @@ from src.ingestion.embed import Embedder
 from src.retrieval.bm25 import BM25Index, bm25_path
 from src.retrieval.citations import assign_citations, build_extractive_answer
 from src.retrieval.expansion import expand
+from src.xbrl.evidence import fact_chunk as xbrl_fact_chunk
 from src.retrieval.hybrid import hybrid_search
 from src.retrieval.reranker import Reranker
 from src.retrieval.store import VectorStore, get_vector_store
@@ -122,6 +123,16 @@ class Retriever:
             use_dense=use_dense,
         )
         reranked = self.reranker.rerank(query, fused, top_k=top_k)
+
+        # If the question asks for a figure we hold in XBRL, hand the model the FILED
+        # number instead of making it recover one from a table. 73% of retrieval
+        # failures on financial corpora are table-structure mismatches, and this
+        # sidesteps them entirely: exact value, right period, cited to the accession
+        # number, and grounded for the faithfulness gate.
+        fact = xbrl_fact_chunk(query, tickers)
+        if fact is not None:
+            reranked = [fact] + [c for c in reranked if c.chunk_id != fact.chunk_id][: top_k - 1]
+
         citations = assign_citations(reranked)
         answer = build_extractive_answer(query, reranked)
 
