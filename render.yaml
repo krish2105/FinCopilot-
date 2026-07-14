@@ -16,8 +16,12 @@ services:
         value: 8000
       - key: FINCOPILOT_TICKERS
         value: AAPL,MSFT,AMZN,TSLA,JPM,NVDA,META,GOOGL,EMAAR.AE,IHC.AE
+      # FTS-primary (Phase 38): Postgres full-text search does the retrieval and needs
+      # no quota, so dense vectors are optional. `hash` = instant, unlimited placeholder
+      # vectors; the retriever skips the non-semantic dense leg automatically.
+      # MUST match whatever the corpus was seeded with. Set to `gemini` + re-seed for dense.
       - key: FINCOPILOT_EMBED_BACKEND
-        value: auto
+        value: hash
       - key: EDGAR_USER_AGENT
         value: FinCopilot research your-email@example.com
       # --- Secrets: set these in the Render dashboard ---
@@ -32,4 +36,19 @@ services:
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # --- Optional: each feature is guarded and no-ops without its key ---
+      - key: FMP_API_KEY # live quotes, price charts, earnings, fundamentals
+        sync: false
+      - key: REDIS_URL # Upstash — rate limiting + response cache
+        sync: false
+      - key: SENTRY_DSN # error monitoring
+        sync: false
+      - key: RESEND_API_KEY # weekly watchlist digest (Phase 41)
+        sync: false
+      - key: STRIPE_SECRET_KEY # billing (run scripts/setup_stripe.py for the price ids)
+        sync: false
+      - key: STRIPE_PRICE_PRO
+        sync: false
+      - key: STRIPE_PRICE_TEAM
         sync: false

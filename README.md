@@ -181,27 +181,35 @@ needle-in-haystack over real filing text. Harness: `backend/src/evaluation`, run
 with `python -m src.evaluation.run`; results serve at `GET /eval` and render in the
 in-app evaluation dashboard.
 
-Results with the **local semantic stack** (bge-small embeddings + `ms-marco-MiniLM`
-cross-encoder reranker, no API key):
+Numbers are published **as measured, including the bad ones** — the live results are
+committed to [`eval/results/latest.json`](eval/results/latest.json) and rendered in
+the in-app Evaluation dashboard.
 
-| Metric | Score |
-| --- | --- |
-| Context hit (retrieved the correct gold source) | **100%** |
-| Faithfulness (Self-RAG gate pass rate) | **100%** |
-| Citation coverage | **100%** |
-| Refusal rate | 0% |
-| Answer match (offline extractive synthesizer) | 36% |
-| Avg latency | ~186 ms |
+The first run against a **live LLM** was the most valuable thing the harness has done:
+it caught a real defect that manual testing only hinted at.
 
-Retrieval and grounding are strong and fully cited. **Answer match is honestly
-gated by the offline extractive synthesizer** — many FinanceBench answers require
-multi-step LLM computation (e.g. cash-conversion-cycle), which lifts this metric
-substantially once a `GEMINI_API_KEY` is configured. Canonical **RAGAS** metrics
-(faithfulness, answer relevancy, context precision/recall) are wired and run when an
-LLM key is present; without one the dashboard shows them as pending.
+| Metric | Offline (extractive) | Live LLM — before gate fix |
+| --- | --- | --- |
+| Citation coverage | 100% | **100%** |
+| Answer match | 36% | **42%** |
+| Context hit | 100% | 78% |
+| Faithfulness | 100% | **44%** ⚠️ |
+| Refusal rate | 0% | **56%** ⚠️ |
 
-> Full run instructions and real RAGAS evaluation numbers are added as later phases
-> land. This README is intentionally a stub during Phase 0.
+A 56% refusal rate meant the faithfulness gate was **discarding more than half of its
+own correct, fully-cited answers**. The judge had been told "if a claim is not clearly
+supported, treat it as unsupported", so it flagged legitimate cross-source synthesis
+("both companies cite competition risk") as fabrication — punishing exactly what
+GraphRAG exists to do — and a binary verdict then threw the whole answer away.
+
+Phase 39 fixed this by weighing claims by **materiality**: an unsupported claim
+carrying a *figure* still refuses unconditionally (a wrong number is the harm this
+product exists to prevent), as do ungrounded numbers and bad arithmetic — but prose
+doubt only refuses when it overwhelms the answer. The guarantee is unchanged where it
+counts; it simply stops throwing away good work.
+
+Run it yourself: `cd backend && python -m src.evaluation.run` (results serve at
+`GET /eval`). Canonical **RAGAS** metrics are wired and run when an LLM key is present.
 
 ## Build status
 
@@ -231,7 +239,16 @@ Built phase-by-phase; the commit history tells the story.
 - [x] Phase 27 — consumer UX (shareable answer permalinks, cold-start masking + keep-warm ping, mobile polish)
 - [x] Phase 28 — eval-as-CI-gate (PR-blocking quality thresholds) + public /status page
 - [x] Phase 29 — legal pack (Terms/Privacy/DPA/Subprocessors) + EU AI Act "AI-generated" label + "no-training" statement (Stripe activation pending keys)
-- [x] Phase 30 — growth loop (SEO answer pages /a/[q], /explore catalog, sitemap + robots) (email/analytics pending keys)
+- [x] Phase 30 — growth loop (SEO answer pages /a/[q], /explore catalog, sitemap + robots)
+- [x] Phase 31 — live LLM (Gemini 3.1 Flash-Lite → Gemini 3 Flash) + streaming
+- [x] Phase 32 — **Postgres full-text search** replaces in-memory BM25 (no cold-start rebuild, no OOM, better retrieval)
+- [x] Phase 33 — ingestion on GitHub Actions (Render's free tier has no shell) + keep-warm cron
+- [x] Phase 34 — compare mode, watchlist, PWA (installable)
+- [x] Phase 35 — Stripe setup script (products + prices)
+- [x] Phase 38 — FTS-primary (retrieval no longer gated on embedding quota)
+- [x] Phase 39 — **materiality-aware faithfulness gate** (it was refusing 56% of correct, cited answers)
+- [x] Phase 40 — **insight layer**: Risk Diff (YoY disclosure changes) · red-flag scanner · fundamentals · peer benchmarking · portfolio risk overlap
+- [x] Phase 41 — weekly watchlist digest (Resend), sent from a free GitHub cron
 
 ### SaaS layer
 
