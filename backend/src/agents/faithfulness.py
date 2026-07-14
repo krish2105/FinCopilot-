@@ -94,18 +94,27 @@ def verify(
         for e in verify_arithmetic(answer)
     ]
 
-    # --- deterministic semantic grounding ---
+    # --- semantic grounding ---
+    # The lexical-overlap heuristic is a *fallback* for the offline extractive
+    # stack, where answers copy evidence verbatim so overlap is naturally high.
+    # A live LLM paraphrases, so well-grounded prose scores low on word overlap
+    # and would be falsely refused. When an LLM is available we let it judge
+    # semantic support (see _llm_refine) and keep only the hard, precise
+    # guardrails here — ungrounded numbers and bad arithmetic — which no
+    # paraphrase can excuse.
+    live = router.mode != "stub"
     unsupported: list[str] = list(arithmetic_errors)
     sentences = [s.strip() for s in _SENTENCE_SPLIT.split(answer) if s.strip()]
-    for sent in sentences:
-        clean = _MARKER_RE.sub("", sent).strip()
-        words = _WORD_RE.findall(clean.lower())
-        if len(words) < 4:
-            continue
-        overlap = sum(1 for w in words if w in evidence_words) / len(words)
-        has_marker = bool(_MARKER_RE.search(sent))
-        if overlap < _MIN_OVERLAP and not has_marker:
-            unsupported.append(clean[:120])
+    if not live:
+        for sent in sentences:
+            clean = _MARKER_RE.sub("", sent).strip()
+            words = _WORD_RE.findall(clean.lower())
+            if len(words) < 4:
+                continue
+            overlap = sum(1 for w in words if w in evidence_words) / len(words)
+            has_marker = bool(_MARKER_RE.search(sent))
+            if overlap < _MIN_OVERLAP and not has_marker:
+                unsupported.append(clean[:120])
 
     total = max(1, len(sentences))
     score = max(0.0, 1.0 - (len(unsupported) + len(ungrounded_numbers)) / total)
@@ -119,8 +128,10 @@ def verify(
         reason=_reason(ungrounded_numbers, unsupported),
     )
 
-    # Live: let the LLM tighten (never loosen) the verdict for semantic claims.
-    if router.mode != "stub":
+    # Live: the LLM judges semantic support. It can never excuse an ungrounded
+    # number or a bad calculation — those guardrails are already baked into
+    # `verdict` and are preserved through the refinement.
+    if live:
         verdict = _llm_refine(router, answer, evidence_text, verdict, trace)
 
     logger.info("faithfulness: %s score=%.2f", verdict.faithful, verdict.score)
