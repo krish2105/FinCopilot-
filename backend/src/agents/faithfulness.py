@@ -35,21 +35,40 @@ _ANSWER_NUM_RE = re.compile(
 )
 
 _MIN_OVERLAP = 0.18  # below this, a marker-less sentence is deemed unsupported
-# Refuse only when *most* of the answer is unsupported. A single hedged sentence
-# flagged by a conservative judge should not discard an otherwise well-cited answer
-# (ungrounded numbers / bad arithmetic still refuse unconditionally — see _decide).
-_MIN_FAITHFUL_SCORE = 0.6
+
+# The "refuses to guess" promise is enforced by the *hard* guardrails: a figure that
+# isn't in the evidence, or arithmetic that doesn't compute, refuses unconditionally
+# and deterministically. Those are the claims that actually hurt someone.
+#
+# Semantic doubt from an LLM judge is fuzzy by comparison, so it only refuses when it
+# overwhelms the answer (2/3+ of it). An earlier, stricter rule refused 56% of all
+# FinanceBench answers — it was discarding correct, fully-cited work.
+_MIN_FAITHFUL_SCORE = 0.34
 
 _FAITH_SYSTEM = (
-    "You are a strict fact-checker. Given an answer and the evidence it should be "
-    "based on, decide whether EVERY factual claim in the answer is supported by "
-    "the evidence. List any unsupported claims. Be conservative: if a claim is not "
-    "clearly supported, treat it as unsupported."
+    "You are a fact-checker for a financial research assistant. Given an ANSWER and "
+    "the EVIDENCE it was drawn from, identify only claims that are FABRICATED or "
+    "CONTRADICTED by the evidence.\n\n"
+    "These are SUPPORTED — do NOT flag them:\n"
+    "- A claim that synthesises or aggregates across several pieces of evidence "
+    "(e.g. 'both companies cite competition risk' when each says so separately). "
+    "Combining evidence is the assistant's job, not a fabrication.\n"
+    "- A paraphrase, summary, or restatement in different words.\n"
+    "- A hedge or qualifier (e.g. 'the filing does not quantify this').\n"
+    "- A statement about what the evidence does NOT say.\n\n"
+    "Flag a claim ONLY if the evidence contradicts it, or if it asserts a specific "
+    "fact or figure that appears nowhere in the evidence. When genuinely in doubt, "
+    "treat the claim as supported."
 )
 
 
 def _norm_num(token: str) -> str:
     return re.sub(r"[^\d]", "", token)
+
+
+def _is_groundable_text(text: str) -> bool:
+    """True if `text` carries a figure worth grounding (money/percent/scale/3+ digits)."""
+    return any(_is_groundable(m.group(0).strip().rstrip(",.")) for m in _ANSWER_NUM_RE.finditer(text))
 
 
 def _is_groundable(token: str) -> bool:
@@ -156,7 +175,13 @@ def _decide(
     soft = [u for u in unsupported if u not in arithmetic_errors]
     score = max(0.0, 1.0 - (len(unsupported) + len(ungrounded_numbers)) / total)
 
-    hard_fail = bool(ungrounded_numbers) or bool(arithmetic_errors)
+    # A flagged claim that carries a *figure* is material — a wrong number is the harm
+    # this product exists to prevent, so it refuses even if the rest of the answer is
+    # fine. A flagged claim that is only prose is not, on its own, worth discarding a
+    # cited answer over.
+    material = [u for u in soft if _ANSWER_NUM_RE.search(u) and _is_groundable_text(u)]
+
+    hard_fail = bool(ungrounded_numbers) or bool(arithmetic_errors) or bool(material)
     faithful = not hard_fail and score >= _MIN_FAITHFUL_SCORE
 
     return FaithfulnessVerdict(

@@ -45,3 +45,47 @@ def test_empty_answer_unfaithful():
 
 def test_no_evidence_unfaithful():
     assert not verify(_router(), "Some answer.", RetrievalResult(query="q")).faithful
+
+
+# --- Phase 39: materiality-aware gate -----------------------------------------
+# The gate used to refuse 56% of FinanceBench answers because a conservative judge
+# flagged one prose sentence and a binary rule discarded the whole cited answer.
+# Now: figures and arithmetic refuse unconditionally; prose doubt is only fatal when
+# it overwhelms the answer.
+from src.agents.faithfulness import _decide  # noqa: E402
+
+
+def test_prose_doubt_does_not_discard_a_cited_answer():
+    v = _decide(
+        ["Both firms cite competition risk [1][2].", "Neither quantifies it."],
+        ["Neither quantifies it."],
+        [],
+        [],
+    )
+    assert v.faithful, "a single prose doubt must not refuse a cited synthesis"
+
+
+def test_flagged_claim_carrying_a_figure_still_refuses():
+    v = _decide(
+        ["Revenue was $391,035 million [1].", "Margins improved."],
+        ["Revenue was $391,035 million [1]."],
+        [],
+        [],
+    )
+    assert not v.faithful, "an unsupported claim containing a figure is material"
+
+
+def test_ungrounded_number_always_refuses():
+    v = _decide(["Revenue was $999,999 million."], [], ["$999,999 million"], [])
+    assert not v.faithful
+
+
+def test_bad_arithmetic_always_refuses():
+    err = "arithmetic error: 100 + 100 = 250 (correct: 200.0)"
+    v = _decide(["100 + 100 = 250."], [err], [], [err])
+    assert not v.faithful
+
+
+def test_overwhelmingly_unsupported_answer_refuses():
+    v = _decide(["A.", "B.", "C."], ["A.", "B.", "C."], [], [])
+    assert not v.faithful, "if nearly everything is unsupported, refuse"
