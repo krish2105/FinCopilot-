@@ -33,7 +33,7 @@ psycopg-pool==3.2.4
 # --- Ingestion (Phase 1) ---
 pypdf==5.1.0
 sec-edgar-downloader==5.0.3
-yfinance==0.2.51
+yfinance==1.5.1
 beautifulsoup4==4.12.3
 lxml==5.3.0
 
