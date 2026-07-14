@@ -21,10 +21,13 @@ PLANS: dict[str, Plan] = {
         id="free",
         name="Free",
         price_usd_month=0,
-        queries_per_month=25,
-        max_documents=3,
+        # The public demo runs on the Free plan, so this also gates every anonymous
+        # visitor. At 25/month a handful of people exhaust it for everyone and the
+        # product looks broken — a quota should shape behaviour, not prevent trial.
+        queries_per_month=500,
+        max_documents=10,
         max_seats=1,
-        features=["Public filings corpus", "Cited answers", "1 data room"],
+        features=["Public filings corpus", "Cited answers", "Insights", "1 data room"],
     ),
     "pro": Plan(
         id="pro",
