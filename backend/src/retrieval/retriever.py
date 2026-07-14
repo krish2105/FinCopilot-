@@ -33,9 +33,28 @@ class Retriever:
         self.settings = settings or get_settings()
         self.embedder = embedder or Embedder(self.settings)
         self.store = store or get_vector_store(self.embedder.dim, self.embedder.name, self.settings)
-        # bm25 may legitimately be None before the first ingestion.
-        self.bm25 = bm25 if bm25 is not None else BM25Index.load(bm25_path())
         self.reranker = reranker or Reranker(self.settings)
+
+        if bm25 is not None:
+            self.bm25 = bm25
+        else:
+            # Postgres corpora use the DB's own GIN-indexed full-text search: it needs
+            # no warm-up, survives Render's ephemeral disk, and costs no app memory
+            # (an in-RAM BM25 over the full corpus OOMs a 512MB instance). Local /
+            # SQLite corpora keep the file-based BM25 index.
+            self.bm25 = self._pg_fts() or BM25Index.load(bm25_path())
+
+    def _pg_fts(self):
+        """Postgres full-text index when the corpus lives in Postgres, else None."""
+        try:
+            from src.retrieval.pg_fts import PgFtsIndex
+            from src.retrieval.pg_store import PgVectorStore
+
+            if isinstance(self.store, PgVectorStore):
+                return PgFtsIndex(self.store.conn)
+        except Exception:  # noqa: BLE001
+            logger.exception("Postgres FTS unavailable; falling back to in-memory BM25")
+        return None
 
     def _ensure_bm25(self) -> None:
         """Lazily (re)build the BM25 index from the vector store when it's absent.
@@ -46,6 +65,11 @@ class Retriever:
         process-wide singleton. Critical for the offline/hash embedding stack, where
         dense similarity is weak and BM25 does most of the retrieval work.
         """
+        from src.retrieval.pg_fts import PgFtsIndex
+
+        # Postgres FTS is always "built" — never replace it with an in-memory index.
+        if isinstance(self.bm25, PgFtsIndex):
+            return
         if self.bm25 is not None and len(self.bm25) > 0:
             return
         try:

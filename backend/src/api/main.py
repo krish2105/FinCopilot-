@@ -66,22 +66,26 @@ def _warm_indexes() -> None:
 
     log = logging.getLogger(__name__)
     try:
-        from src.ingestion.embed import Embedder
         from src.retrieval.bm25 import BM25Index, bm25_path
         from src.retrieval.graph import EntityGraph, graph_path
-        from src.retrieval.store import get_vector_store
+        from src.retrieval.pg_fts import PgFtsIndex
+        from src.retrieval.retriever import get_retriever
 
-        if os.path.exists(bm25_path()):
-            return
-        embedder = Embedder(settings)
-        store = get_vector_store(embedder.dim, embedder.name, settings)
+        r = get_retriever()
+        store = r.store
         if store.count() <= 0:
             log.info("warm_indexes: vector store empty, nothing to rebuild")
             return
-        chunks = store.iter_all()
-        BM25Index.build(chunks, bm25_path())
-        EntityGraph.build(store, graph_path())
-        log.info("warm_indexes: rebuilt BM25 + graph from %d chunks", len(chunks))
+
+        # Postgres corpora get lexical search straight from the DB (GIN index) —
+        # no in-memory index to build, so only the entity graph needs warming.
+        pg = isinstance(r.bm25, PgFtsIndex)
+        if not pg and not os.path.exists(bm25_path()):
+            BM25Index.build(store.iter_all(), bm25_path())
+            log.info("warm_indexes: rebuilt in-memory BM25")
+        if not os.path.exists(graph_path()):
+            EntityGraph.build(store, graph_path())
+            log.info("warm_indexes: rebuilt entity graph")
     except Exception:  # noqa: BLE001
         log.exception("warm_indexes: rebuild failed (hybrid may be degraded)")
 
@@ -126,23 +130,20 @@ def root() -> dict[str, object]:
 @app.get("/corpus/stats")
 def corpus_stats() -> dict[str, object]:
     """How much real data is ingested and searchable (proves Phase 1)."""
-    from src.ingestion.embed import Embedder
-    from src.retrieval.bm25 import BM25Index, bm25_path
-    from src.retrieval.store import get_vector_store
+    from src.retrieval.retriever import get_retriever
 
-    embedder = Embedder(settings)
-    store = get_vector_store(embedder.dim, embedder.name, settings)
-    bm25 = BM25Index.load(bm25_path())
-
+    r = get_retriever()
     by_ticker: dict[str, int] = {}
-    for chunk in store.iter_all():
+    for chunk in r.store.iter_all():
         by_ticker[chunk.metadata.ticker] = by_ticker.get(chunk.metadata.ticker, 0) + 1
 
+    lexical = r.bm25
     return {
-        "embed_backend": f"{embedder.backend}:{embedder.name}",
-        "embed_dim": embedder.dim,
-        "vector_chunks": store.count(),
-        "bm25_docs": len(bm25) if bm25 else 0,
+        "embed_backend": f"{r.embedder.backend}:{r.embedder.name}",
+        "embed_dim": r.embedder.dim,
+        "vector_chunks": r.store.count(),
+        "lexical_backend": getattr(lexical, "name", "bm25") if lexical else "none",
+        "bm25_docs": len(lexical) if lexical else 0,
         "chunks_by_ticker": by_ticker,
     }
 
