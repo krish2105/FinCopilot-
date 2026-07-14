@@ -24,6 +24,7 @@ into `hybrid_search`.
 from __future__ import annotations
 
 import logging
+import re
 
 from src.ingestion.models import DocType, SourceMetadata
 from src.retrieval.store import SearchHit
@@ -35,6 +36,30 @@ _FTS_EXPR = (
     "to_tsvector('english', coalesce(ticker,'') || ' ' || coalesce(title,'') || ' ' "
     "|| coalesce(section,'') || ' ' || coalesce(text,''))"
 )
+
+
+_WORD_RE = re.compile(r"[A-Za-z0-9]+")
+_MAX_TERMS = 40  # a tsquery of unbounded width gets slow and adds nothing
+
+
+def _or_tsquery(text: str) -> str:
+    """Build an OR-ed tsquery string from free text.
+
+    Postgres' `to_tsquery` needs bare lexemes joined by operators — it will not take a
+    sentence. We strip punctuation, de-duplicate, and OR the terms so a long question
+    (or an expanded one) widens recall rather than demanding every word appear.
+    Stop-words are dropped by the 'english' config itself.
+    """
+    seen: set[str] = set()
+    terms: list[str] = []
+    for w in _WORD_RE.findall(text.lower()):
+        if len(w) < 2 or w in seen:
+            continue
+        seen.add(w)
+        terms.append(w)
+        if len(terms) >= _MAX_TERMS:
+            break
+    return " | ".join(terms)
 
 
 class PgFtsIndex:
@@ -68,10 +93,18 @@ class PgFtsIndex:
         ticker_filter = [t.upper() for t in tickers] if tickers else None
         ws_filter = list(workspaces) if workspaces else None
 
+        tsquery = _or_tsquery(text)
+        if not tsquery:
+            return []
+
+        # OR, not AND. `plainto_tsquery` requires EVERY term to match, so any query
+        # expansion (or simply a wordy question) makes the search *narrower* and can
+        # match nothing at all. We want broad recall here and let the cross-encoder do
+        # the discriminating — ts_rank_cd still favours chunks that hit more terms.
         sql = f"""
             SELECT chunk_id, text, ticker, doc_type, title, source_url, filing_date,
                    page, section, ts_rank_cd({_FTS_EXPR}, q) AS rank
-            FROM chunks, plainto_tsquery('english', %s) AS q
+            FROM chunks, to_tsquery('english', %s) AS q
             WHERE {_FTS_EXPR} @@ q
               AND (%s::text[] IS NULL OR ticker = ANY(%s))
               AND (%s::text[] IS NULL OR workspace_id = ANY(%s))
@@ -81,7 +114,7 @@ class PgFtsIndex:
         try:
             rows = self.conn.execute(
                 sql,
-                (text, ticker_filter, ticker_filter, ws_filter, ws_filter, k),
+                (tsquery, ticker_filter, ticker_filter, ws_filter, ws_filter, k),
             ).fetchall()
         except Exception:  # noqa: BLE001
             logger.exception("Postgres FTS query failed")

@@ -13,6 +13,7 @@ from src.config.settings import Settings, get_settings
 from src.ingestion.embed import Embedder
 from src.retrieval.bm25 import BM25Index, bm25_path
 from src.retrieval.citations import assign_citations, build_extractive_answer
+from src.retrieval.expansion import expand
 from src.retrieval.hybrid import hybrid_search
 from src.retrieval.reranker import Reranker
 from src.retrieval.store import VectorStore, get_vector_store
@@ -29,11 +30,13 @@ class Retriever:
         store: VectorStore | None = None,
         bm25: BM25Index | None = None,
         reranker: Reranker | None = None,
+        router=None,
     ):
         self.settings = settings or get_settings()
         self.embedder = embedder or Embedder(self.settings)
         self.store = store or get_vector_store(self.embedder.dim, self.embedder.name, self.settings)
         self.reranker = reranker or Reranker(self.settings)
+        self.router = router  # optional; enables step-back expansion on conceptual queries
 
         if bm25 is not None:
             self.bm25 = bm25
@@ -101,9 +104,16 @@ class Retriever:
         if query_vec is None:
             query_vec = [0.0] * self.embedder.dim  # unused when use_dense is False
 
+        # Expand only the lexical query. Filings speak a different dialect from
+        # questions ("net sales", not "topline"; "fiscal 2024", not "FY24"), and on
+        # financial corpora the lexical leg outperforms the dense one — so this is
+        # where vocabulary matching pays. Expansion is non-generative for numeric
+        # questions by design: see src/retrieval/expansion.py.
+        lexical_query = expand(query, router=self.router)
+
         fused = hybrid_search(
             query_vec,
-            query,
+            lexical_query,
             self.store,
             self.bm25,
             candidate_k=candidate_k,

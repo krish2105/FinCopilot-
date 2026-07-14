@@ -67,6 +67,30 @@ def _throttle(tokens: int) -> None:
         time.sleep(max(0.5, sleep_for))
 
 
+_MODEL_TO_BACKEND: dict[str, str] = {
+    _GEMINI_MODEL: "gemini",
+    _ST_MODEL: "local",
+    "hash-embedder-v1": "hash",
+}
+
+
+def _corpus_embed_model(settings: Settings) -> str | None:
+    """The embedding model the existing Postgres corpus was built with, if any."""
+    url = settings.database_url
+    if not url or not url.startswith("postgres"):
+        return None  # SQLite/local corpora are rebuilt per run; nothing to align to
+    try:
+        import psycopg
+
+        with psycopg.connect(url, connect_timeout=10) as conn, conn.cursor() as cur:
+            cur.execute("SELECT embed_model FROM chunks WHERE embed_model IS NOT NULL LIMIT 1")
+            row = cur.fetchone()
+            return row[0] if row else None
+    except Exception as exc:  # noqa: BLE001
+        logger.info("could not read corpus embed model (%s); using configured backend", exc)
+        return None
+
+
 def resolve_backend(settings: Settings) -> str:
     choice = settings.fincopilot_embed_backend.lower()
     if choice in ("gemini", "local", "hash"):
@@ -84,6 +108,31 @@ class Embedder:
         self.settings = settings or get_settings()
         self.backend = resolve_backend(self.settings)
         self._st_model = None  # lazily loaded sentence-transformers model
+        self.name, self.dim = self._probe()
+        self._align_with_corpus()
+
+    def _align_with_corpus(self) -> None:
+        """Adopt whatever the existing corpus was embedded with.
+
+        Query vectors and document vectors must live in the same space, so the
+        embedding model is really a property of the *corpus*, not of the process.
+        Deriving it from an env var means a re-seed silently desynchronises the API
+        from its own data — which took the live service down twice, returning empty
+        answers with no error. The corpus is the source of truth; config is a hint.
+        """
+        model = _corpus_embed_model(self.settings)
+        if not model or model == self.name:
+            return
+        backend = _MODEL_TO_BACKEND.get(model)
+        if not backend:
+            logger.warning("corpus embedded with unknown model %r; keeping %s", model, self.name)
+            return
+        logger.warning(
+            "corpus was embedded with %s but config says %s — following the corpus",
+            model,
+            self.name,
+        )
+        self.backend = backend
         self.name, self.dim = self._probe()
 
     def _probe(self) -> tuple[str, int]:

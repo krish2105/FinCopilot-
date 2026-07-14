@@ -21,11 +21,31 @@ SYNTHESIS_SYSTEM = (
 )
 
 
+def order_for_context(chunks: list) -> list:
+    """Strongest evidence at the START and END of the prompt.
+
+    Attention is U-shaped: models reliably use the beginning and the end of a context
+    window and skim the middle ("lost in the middle"), with accuracy dropping 30-50%
+    for facts buried mid-context. Chunks arrive best-first, so we deal them
+    alternately to the front and the back — rank 1 leads, rank 2 closes, and the
+    weakest evidence ends up in the middle where it does the least harm.
+
+    Citation markers are already assigned, so re-ordering the presentation costs
+    nothing and changes no output contract.
+    """
+    if len(chunks) <= 2:
+        return chunks
+    head, tail = [], []
+    for i, c in enumerate(chunks):
+        (head if i % 2 == 0 else tail).append(c)
+    return head + tail[::-1]
+
+
 def format_evidence(retrieval: RetrievalResult | None, max_chars: int = 900) -> str:
     if not retrieval or not retrieval.chunks:
         return "(no evidence retrieved)"
     lines = []
-    for c in retrieval.chunks:
+    for c in order_for_context(list(retrieval.chunks)):
         m = c.metadata
         loc = f"{m.ticker} {m.doc_type}"
         if m.page is not None:

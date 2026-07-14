@@ -169,6 +169,9 @@ class Reranker:
 # unsupported-looking claims. No tuning, no extra model call. (EMNLP 2025)
 _ADAPTIVE_BUFFER = 2  # keep a couple past the cliff; recall matters more than precision here
 _MIN_KEEP = 3
+# The drop must account for this share of the whole score range to count as a cliff.
+# Without it, a smoothly-decaying list (every candidate useful) gets trimmed for no reason.
+_CLIFF_SHARE = 0.35
 
 
 def adaptive_k(ranked: list[RetrievedChunk], top_k: int) -> list[RetrievedChunk]:
@@ -178,10 +181,17 @@ def adaptive_k(ranked: list[RetrievedChunk], top_k: int) -> list[RetrievedChunk]
     window = ranked[:top_k]
     scores = [c.rerank_score for c in window]
     gaps = [scores[i] - scores[i + 1] for i in range(len(scores) - 1)]
-    if not gaps or max(gaps) <= 0:
+    if not gaps:
         return window
 
-    cut = gaps.index(max(gaps)) + 1  # keep everything above the biggest cliff
+    span = scores[0] - scores[-1]
+    max_gap = max(gaps)
+    # Only cut at a genuine cliff. If relevance decays smoothly, every candidate is
+    # plausibly useful and trimming would just throw away recall.
+    if span <= 0 or max_gap < _CLIFF_SHARE * span:
+        return window
+
+    cut = gaps.index(max_gap) + 1  # keep everything above the cliff
     keep = max(_MIN_KEEP, min(top_k, cut + _ADAPTIVE_BUFFER))
     return window[:keep]
 
