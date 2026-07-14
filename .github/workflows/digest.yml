@@ -1,0 +1,46 @@
+name: weekly-digest
+
+# The retention loop. Every Monday, email each subscriber what changed in the
+# companies they watch — risk-disclosure diffs, red flags, and price moves.
+#
+# Runs on GitHub's free runner and simply calls the API, so no server-side scheduler
+# is needed (Render's free tier has no cron).
+#
+# Required repo secrets:
+#   API_URL          e.g. https://fincopilot-api-qypb.onrender.com
+#   DIGEST_TOKEN     an API key created in-app (Settings -> API keys)
+#   DIGEST_TO        recipient email
+#   DIGEST_TICKERS   optional, e.g. "AAPL,MSFT,NVDA" (defaults to the watchlist)
+#
+# No-ops safely if RESEND_API_KEY isn't set on the backend.
+
+on:
+  schedule:
+    - cron: "0 13 * * 1" # Mondays 13:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wake the API (free tier spins down)
+        run: curl -sS --max-time 90 "${{ secrets.API_URL }}/health" || true
+
+      - name: Send the weekly digest
+        run: |
+          tickers='${{ secrets.DIGEST_TICKERS }}'
+          payload=$(python3 - <<PY
+          import json, os
+          t = """$tickers""".strip()
+          arr = [x.strip().upper() for x in t.split(",") if x.strip()] if t else []
+          print(json.dumps({"to": "${{ secrets.DIGEST_TO }}", "tickers": arr}))
+          PY
+          )
+          code=$(curl -sS -o /tmp/out.json -w "%{http_code}" --max-time 240 \
+            -X POST "${{ secrets.API_URL }}/notify/digest/send" \
+            -H "content-type: application/json" \
+            -H "authorization: Bearer ${{ secrets.DIGEST_TOKEN }}" \
+            -d "$payload")
+          echo "HTTP $code"; cat /tmp/out.json
+          [ "$code" = "200" ] || exit 1

@@ -14,6 +14,7 @@ from src.api.agent_routes import router as agent_router
 from src.api.billing_routes import router as billing_router
 from src.api.insights_routes import router as insights_router
 from src.api.market_routes import router as market_router
+from src.api.notify_routes import router as notify_router
 from src.api.retrieval_routes import router as retrieval_router
 from src.api.saas_routes import router as saas_router
 from src.api.team_routes import router as team_router
@@ -44,6 +45,7 @@ app.add_middleware(
 app.include_router(retrieval_router)
 app.include_router(market_router)
 app.include_router(insights_router)
+app.include_router(notify_router)
 app.include_router(agent_router)
 app.include_router(workspace_router)
 app.include_router(billing_router)

@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # --- Optional data providers ---
     fmp_api_key: str | None = None
     newsapi_key: str | None = None
+    # Email (Resend free tier). Empty = notifications are a no-op.
+    resend_api_key: str | None = None
+    email_from: str = "FinCopilot <onboarding@resend.dev>"
 
     # --- Graph (Phase 9) ---
     neo4j_uri: str | None = None
