@@ -44,3 +44,10 @@ networkx==3.4.2
 redis==5.2.1
 rq==2.0.0
 sentry-sdk==2.19.2
+
+# Cross-encoder reranker via ONNX Runtime (Phase 44) — the same model as
+# sentence-transformers would load, but int8-quantized and CPU-only, so it fits a
+# 512MB instance without dragging in torch (~2GB).
+onnxruntime==1.20.1
+tokenizers==0.21.0
+huggingface-hub==0.27.1

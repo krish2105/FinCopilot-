@@ -12,6 +12,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Bake the int8 cross-encoder into the image so a cold start never pays to download
+# it (Render's disk is ephemeral, so a runtime download would repeat on every wake).
+RUN python -c "\
+from huggingface_hub import hf_hub_download; \
+hf_hub_download('Xenova/ms-marco-MiniLM-L-6-v2', 'onnx/model_quantized.onnx'); \
+hf_hub_download('Xenova/ms-marco-MiniLM-L-6-v2', 'tokenizer.json'); \
+print('reranker cached')"
+
 # App source
 COPY . .
 

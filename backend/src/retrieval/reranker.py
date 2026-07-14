@@ -1,12 +1,19 @@
-"""Cross-encoder reranker with a deterministic offline fallback.
+"""Cross-encoder reranker (Phase 44).
 
-Primary: local `cross-encoder/ms-marco-MiniLM-L-6-v2` (sentence-transformers),
-no API required. Fallback (offline mode / torch or model unavailable): a
-deterministic lexical relevance score based on query-term coverage + density, so
-CI and offline demos still reorder candidates sensibly without heavy deps.
+The reranker is the single dominant component in a RAG stack — an ablation across
+HetDocQA/MuSiQue/QASPER found that removing the cross-encoder collapsed nDCG@10 from
+0.644 to 0.034, a bigger effect than GraphRAG, routing, fusion and corrective
+re-retrieval *combined* (arXiv 2606.28367). Yet this service ran for weeks on the
+lexical fallback, because the cross-encoder was loaded through sentence-transformers,
+which drags in torch — far too heavy for a 512 MB free instance.
 
-Like the embedder, the backend is resolved once. Offline mode forces "lexical"
-because loading the cross-encoder would require a network model download.
+So we run the same model through **ONNX Runtime, int8-quantized**: ~20 MB of weights,
+CPU-only, no torch, tens of milliseconds per batch. Backends, in order:
+
+1. ``onnx``          — quantized cross-encoder. The production path.
+2. ``cross-encoder`` — sentence-transformers, if torch happens to be installed (dev).
+3. ``lexical``       — deterministic term-coverage score. CI/offline; never a silent
+                       production default again (it logs loudly).
 """
 
 from __future__ import annotations
@@ -21,28 +28,79 @@ from src.retrieval.types import RetrievedChunk
 logger = logging.getLogger(__name__)
 
 _CE_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+# Same model, exported to ONNX and int8-quantized (~20 MB, no torch).
+_ONNX_REPO = "Xenova/ms-marco-MiniLM-L-6-v2"
+_ONNX_FILE = "onnx/model_quantized.onnx"
+_MAX_LEN = 512
+_BATCH = 16  # keeps peak memory small on a 512 MB instance
+
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
 def resolve_rerank_backend(settings: Settings) -> str:
     choice = settings.fincopilot_rerank_backend.lower()
-    if choice in ("cross-encoder", "lexical"):
+    if choice in ("onnx", "cross-encoder", "lexical"):
         return choice
     # "auto"
     if settings.fincopilot_offline_mode:
         return "lexical"
-    return "cross-encoder"
+    return "onnx"
 
 
 class Reranker:
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or get_settings()
         self.backend = resolve_rerank_backend(self.settings)
+        self._session = None
+        self._tokenizer = None
         self._ce = None
+
+        if self.backend == "onnx" and not self._try_load_onnx():
+            logger.warning("ONNX reranker unavailable; trying sentence-transformers")
+            self.backend = "cross-encoder"
         if self.backend == "cross-encoder" and not self._try_load_ce():
-            logger.warning("Cross-encoder unavailable; using lexical reranker")
+            # Loud: retrieval quality falls off a cliff without a cross-encoder.
+            logger.warning(
+                "NO CROSS-ENCODER — falling back to the lexical reranker. Retrieval "
+                "quality is materially degraded; install onnxruntime + tokenizers."
+            )
             self.backend = "lexical"
-        self.name = _CE_MODEL if self.backend == "cross-encoder" else "lexical-v1"
+
+        self.name = {
+            "onnx": f"{_CE_MODEL} (onnx-int8)",
+            "cross-encoder": _CE_MODEL,
+            "lexical": "lexical-v1",
+        }[self.backend]
+
+    # --- loading -------------------------------------------------------------
+    def _try_load_onnx(self) -> bool:
+        try:
+            import onnxruntime as ort
+            from huggingface_hub import hf_hub_download
+            from tokenizers import Tokenizer
+        except Exception as exc:  # noqa: BLE001
+            logger.info("onnx deps unavailable: %s", exc)
+            return False
+        try:
+            model_path = hf_hub_download(_ONNX_REPO, _ONNX_FILE)
+            tok_path = hf_hub_download(_ONNX_REPO, "tokenizer.json")
+
+            opts = ort.SessionOptions()
+            opts.intra_op_num_threads = 1  # free tier is ~1 vCPU; more threads only thrash
+            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            self._session = ort.InferenceSession(
+                model_path, sess_options=opts, providers=["CPUExecutionProvider"]
+            )
+
+            tok = Tokenizer.from_file(tok_path)
+            tok.enable_truncation(max_length=_MAX_LEN)
+            tok.enable_padding()
+            self._tokenizer = tok
+            logger.info("ONNX cross-encoder ready (%s)", _ONNX_REPO)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to load ONNX reranker: %s", exc)
+            return False
 
     def _try_load_ce(self) -> bool:
         try:
@@ -52,25 +110,80 @@ class Reranker:
         try:
             self._ce = CrossEncoder(_CE_MODEL)
             return True
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to load %s: %s", _CE_MODEL, exc)
             return False
+
+    # --- scoring -------------------------------------------------------------
+    def _onnx_scores(self, query: str, texts: list[str]) -> list[float]:
+        import numpy as np
+
+        input_names = {i.name for i in self._session.get_inputs()}
+        scores: list[float] = []
+        for i in range(0, len(texts), _BATCH):
+            window = texts[i : i + _BATCH]
+            encs = self._tokenizer.encode_batch([(query, t) for t in window])
+            feed = {
+                "input_ids": np.array([e.ids for e in encs], dtype=np.int64),
+                "attention_mask": np.array([e.attention_mask for e in encs], dtype=np.int64),
+            }
+            if "token_type_ids" in input_names:
+                feed["token_type_ids"] = np.array([e.type_ids for e in encs], dtype=np.int64)
+            logits = self._session.run(None, feed)[0]
+            scores.extend(float(x) for x in np.asarray(logits).reshape(len(window), -1)[:, 0])
+        return scores
 
     def rerank(
         self, query: str, chunks: list[RetrievedChunk], top_k: int = 6
     ) -> list[RetrievedChunk]:
         if not chunks:
             return []
-        if self.backend == "cross-encoder":
-            scores = self._ce.predict([(query, c.text) for c in chunks])
-            for c, s in zip(chunks, scores, strict=True):
+
+        if self.backend == "onnx":
+            try:
+                for c, s in zip(chunks, self._onnx_scores(query, [c.text for c in chunks]), strict=True):
+                    c.rerank_score = s
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("ONNX rerank failed (%s); using lexical for this query", exc)
+                self._lexical(query, chunks)
+        elif self.backend == "cross-encoder":
+            for c, s in zip(chunks, self._ce.predict([(query, c.text) for c in chunks]), strict=True):
                 c.rerank_score = float(s)
         else:
-            q_tokens = set(_TOKEN_RE.findall(query.lower()))
-            for c in chunks:
-                c.rerank_score = _lexical_score(q_tokens, c.text)
+            self._lexical(query, chunks)
+
         ranked = sorted(chunks, key=lambda c: c.rerank_score, reverse=True)
+        return adaptive_k(ranked, top_k)
+
+    def _lexical(self, query: str, chunks: list[RetrievedChunk]) -> None:
+        q_tokens = set(_TOKEN_RE.findall(query.lower()))
+        for c in chunks:
+            c.rerank_score = _lexical_score(q_tokens, c.text)
+
+
+# --- Adaptive-k (Phase 44) ---------------------------------------------------
+# Instead of always taking a fixed top-k, cut at the largest *drop* in reranker
+# score: the point where relevance falls off a cliff. Keeps genuinely relevant
+# evidence when there's a lot of it, and drops distractors when there isn't —
+# which also helps the faithfulness gate, since fewer distractors means fewer
+# unsupported-looking claims. No tuning, no extra model call. (EMNLP 2025)
+_ADAPTIVE_BUFFER = 2  # keep a couple past the cliff; recall matters more than precision here
+_MIN_KEEP = 3
+
+
+def adaptive_k(ranked: list[RetrievedChunk], top_k: int) -> list[RetrievedChunk]:
+    if len(ranked) <= _MIN_KEEP:
         return ranked[:top_k]
+
+    window = ranked[:top_k]
+    scores = [c.rerank_score for c in window]
+    gaps = [scores[i] - scores[i + 1] for i in range(len(scores) - 1)]
+    if not gaps or max(gaps) <= 0:
+        return window
+
+    cut = gaps.index(max(gaps)) + 1  # keep everything above the biggest cliff
+    keep = max(_MIN_KEEP, min(top_k, cut + _ADAPTIVE_BUFFER))
+    return window[:keep]
 
 
 def _lexical_score(q_tokens: set[str], text: str) -> float:
