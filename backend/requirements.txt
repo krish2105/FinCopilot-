@@ -20,7 +20,7 @@ langchain-core==0.3.28
 google-genai==0.8.0
 PyJWT==2.10.1
 groq==0.13.1
-stripe==11.3.0
+stripe==15.3.0
 
 # --- Retrieval / storage (Phase 1–2) ---
 numpy==2.2.1
