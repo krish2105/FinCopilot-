@@ -1,269 +1,199 @@
-# FinCopilot — Agentic Financial Analyst Copilot
+# FinCopilot — the financial analyst copilot that refuses to guess
 
-> A multi-agent, adaptive-RAG financial research copilot. A team of specialist AI
-> agents reads **real** SEC filings, computes the analysis, checks compliance, and
-> returns a **fully cited** answer — or honestly says **"insufficient evidence."**
-> Built entirely on free-tier infrastructure.
+> A multi-agent, adaptive-RAG research platform for public equities. A team of
+> specialist AI agents reads **real SEC filings**, looks up **exact figures from XBRL**,
+> runs the analysis, checks compliance, and returns a **fully cited** answer — or
+> honestly says **"insufficient evidence."** Built end-to-end on **free-tier
+> infrastructure**.
 
 [![CI](https://github.com/krish2105/FinCopilot-/actions/workflows/ci.yml/badge.svg)](https://github.com/krish2105/FinCopilot-/actions/workflows/ci.yml)
+&nbsp;·&nbsp; **205 backend tests** &nbsp;·&nbsp; **PR-blocking eval gate** &nbsp;·&nbsp; **$0/mo to run**
 
-**Live demo:** [fin-copilot-six.vercel.app](https://fin-copilot-six.vercel.app) · **API:** [fincopilot-api-qypb.onrender.com](https://fincopilot-api-qypb.onrender.com)
+**▶ Live demo:** **[fin-copilot-six.vercel.app](https://fin-copilot-six.vercel.app)** &nbsp;·&nbsp; **API:** [fincopilot-api-qypb.onrender.com](https://fincopilot-api-qypb.onrender.com)
 
-<!-- Record a ~20s screen capture of the workspace answering a question, save as docs/media/demo.gif -->
+<!-- Record a ~20s screen capture of the workspace answering a question → docs/media/demo.gif -->
 ![FinCopilot demo](docs/media/demo.gif)
-
-> Deploy is one-blueprint-per-service and fully wired: **Vercel** (frontend) +
-> **Render** (`render.yaml`) + **Supabase** (pgvector). Step-by-step:
-> [scripts/deploy.md](scripts/deploy.md).
 
 ---
 
 ## Why this exists
 
-Analysts waste hours reading 100-page filings to answer questions that repeat every
-quarter, and generic LLM chatbots hallucinate numbers — fatal in finance. FinCopilot
-orchestrates specialist agents (Researcher, Analyst, Compliance, Visualization) over
-an adaptive RAG stack. Every number traces to a real filing; unsupported claims are
-refused, not guessed.
+Analysts burn hours reading 100-page filings to answer questions that repeat every
+quarter — and generic LLM chatbots **hallucinate financial figures**, which is
+disqualifying in finance. The benchmark data is blunt: on **FinanceBench**, GPT-4-Turbo
+*with retrieval* got **81% of financial questions wrong or refused**. The failure mode
+isn't prose comprehension — it's **lookup and arithmetic**.
 
-## Screenshots
+FinCopilot is built around that finding. Prose is retrieved; **numbers are looked up**
+from the machine-readable XBRL every 10-K is filed with. Every claim traces to a real
+filing. Unsupported claims are **refused, not guessed** — and, crucially, the system was
+tuned so it stops refusing its *own correct answers* (see [Evaluation](#evaluation)).
 
-<!-- Add these images to docs/media/ (see docs/media/README.md for exact shots). -->
-| Workspace — cited answer + faithfulness | Ticker dashboard — live prices & charts |
-| --- | --- |
-| ![Workspace](docs/media/workspace.png) | ![Dashboard](docs/media/dashboard.png) |
+## What makes it different
 
-## Architecture (at a glance)
+| | Most AI finance tools | FinCopilot |
+| --- | --- | --- |
+| Numbers | Retrieved from tables (error-prone) | **Looked up from filed XBRL** — exact, cited to the accession number |
+| When unsure | Guesses plausibly | **Refuses** — ungrounded figures and bad arithmetic fail a hard gate |
+| Retrieval | Vector-only | **Hybrid** (Postgres FTS + optional dense) → **cross-encoder reranker** → adaptive-k |
+| Insight | Answers what you ask | **Tells you what changed** — YoY risk diffs, red flags, portfolio risk concentration |
+| Cost | Enterprise seat pricing | **Runs entirely on free tiers** |
+
+---
+
+## Architecture
 
 ```mermaid
 flowchart TD
-    U["User query — Next.js workspace (SSE streaming)"] --> ORCH["Orchestrator · LangGraph"]
+    U["User query · Next.js workspace (SSE streaming)"] --> ORCH["Orchestrator · LangGraph"]
     ORCH --> CLS{"Complexity classifier"}
-    CLS -->|simple| HS["Hybrid search — pgvector + BM25 · RRF → rerank"]
+    CLS -->|simple factual| HS["Hybrid retrieval"]
     CLS -->|multi-hop| AG["Agentic ReAct loop ≤3 iters"]
-    CLS -->|relationship| GR["GraphRAG — entity graph"]
-    HS --> AGENTS
-    AG --> AGENTS
-    GR --> AGENTS
-    subgraph AGENTS["Specialist agents"]
-        direction LR
-        R["Researcher"] --> A["Analyst + exact calculator"] --> C["Compliance (can veto)"] --> V["Visualization"]
+    CLS -->|relationship| GR["GraphRAG · entity graph"]
+
+    subgraph RET["Retrieval"]
+      direction TB
+      HS --> XB{"Numeric question?"}
+      XB -->|yes| LOOK[("XBRL exact lookup<br/>— filed figure, cited")]
+      XB -->|no| FTS["Postgres FTS + query expansion"]
+      FTS --> RR["Cross-encoder reranker (ONNX int8) → adaptive-k"]
+      LOOK --> EVID
+      RR --> EVID["Ordered evidence set"]
     end
-    AGENTS --> GATE{"Self-RAG faithfulness gate — grounded? cited? math correct?"}
+
+    AG --> EVID
+    GR --> EVID
+    EVID --> AGENTS
+    subgraph AGENTS["Specialist agents"]
+      direction LR
+      R["Researcher"] --> A["Analyst + calculator"] --> C["Compliance"] --> V["Visualization"]
+    end
+    AGENTS --> GATE{"Self-RAG faithfulness gate<br/>grounded? cited? math correct?"}
     GATE -->|grounded| ANS["Cited answer + charts"]
     GATE -->|unsupported| REF["'Insufficient evidence'"]
-    ANS --> AUD["Audit log"]
+    ANS --> AUD["Audit log · FinOps · personalization"]
     REF --> AUD
-    CORP[("Ingestion — SEC EDGAR + market + news → Contextual Retrieval → pgvector + BM25")] -.grounds.-> HS
-    LLM["Provider router — Gemini → Groq → offline stub"] -.powers.-> AGENTS
+
+    CORP[("Ingestion · SEC EDGAR + XBRL + market + news<br/>Contextual Retrieval → pgvector + FTS + entity graph")] -.grounds.-> RET
+    LLM["Provider router · Gemini 3.1 Flash-Lite → Gemini 3 Flash → Groq → offline stub"] -.powers.-> AGENTS
 ```
 
-See [docs/architecture.md](docs/architecture.md), [DECISIONS.md](DECISIONS.md), and
-[DATA_SOURCES.md](DATA_SOURCES.md).
+Full detail: [docs/architecture.md](docs/architecture.md) · [DECISIONS.md](DECISIONS.md) · [docs/ROADMAP_2026.md](docs/ROADMAP_2026.md)
 
-## Stack (all free tier)
+---
+
+## Capabilities
+
+### Research & answers
+- **Cited Q&A over real 10-Ks/10-Qs** with a route badge, source panel, faithfulness score, and a live provider trace.
+- **Exact figures from XBRL** — *"Apple's FY2024 revenue was \$391,035,000,000"*, cited to the SEC accession number, verified by the faithfulness gate.
+- **Adaptive routing** — cheap hybrid search for simple lookups, an agentic ReAct loop for multi-hop, GraphRAG for relationship questions.
+- **Refuses to guess** — a Self-RAG gate blocks any ungrounded number or wrong calculation.
+
+### Insight layer *(tells you what you didn't ask)*
+- **Risk Diff** — what's *new / dropped / escalated* in a company's risk factors year-over-year.
+- **Red-flag scanner** — going concern, restatements, material weakness, litigation.
+- **Portfolio risk overlap** — *"67% of your holdings are exposed to supply-chain risk."*
+- **Fundamentals & peer benchmarking** — revenue/margins/EPS from filed statements.
+
+### Analyst tools
+- **DCF valuation** — a transparent two-stage model with **editable assumptions** and a growth × discount-rate **sensitivity heatmap**. The calculator does the math; the LLM never does.
+- **Screener** — filter the universe by filed fundamentals (deterministic, no model-written SQL).
+- **Market Map** — income-statement **Sankey**, company × risk **heatmap**, and the **entity-graph network**.
+- **Live prices, charts & earnings** · **Compare** two companies · **Watchlist** with filing alerts.
+
+### Platform (B2B SaaS)
+Multi-tenant data rooms · RBAC + Postgres RLS · usage metering & guarded Stripe billing ·
+audit trail · GDPR export/delete · prompt-injection defenses · weekly email digest ·
+public trust center + legal pack · installable **PWA**.
+
+---
+
+## Evaluation
+
+Measured on **50 real FinanceBench questions** over real 10-Ks — human-curated, not
+self-generated. Numbers are published **as measured, including the bad ones**
+([`backend/eval_results/latest.json`](backend/eval_results/latest.json), served at
+`GET /eval` and rendered in-app).
+
+The most valuable thing the harness did was catch a real defect. The first run against a
+**live LLM** exposed that the faithfulness gate was **refusing 56% of its own correct,
+cited answers** — the judge had been told to treat any not-explicitly-stated claim as
+fabrication, so it punished legitimate cross-source synthesis. Fixing it (materiality-
+aware grading: figures and arithmetic refuse unconditionally; prose doubt is scored):
+
+| Metric | Before fix | After fix |
+| --- | --- | --- |
+| Faithfulness | 44% | **90%** |
+| Refusal rate | 56% | **10%** |
+| Context hit | 78% | **92%** |
+| Answer match | 42% | **50%** |
+| Citation coverage | 100% | **100%** |
+
+Quality can't silently regress: a PR that drops these below committed baselines **fails
+CI** ([`backend/tests/test_eval_gate.py`](backend/tests/test_eval_gate.py)).
+
+---
+
+## Tech stack *(every layer free-tier)*
 
 | Layer | Choice |
 | --- | --- |
-| LLM | Gemini 2.5 Flash-Lite → Flash → Groq Llama 3.3 70B → Groq GPT-OSS 120B (fallback chain) |
-| Embeddings | `gemini-embedding-001` + local `bge-small-en-v1.5` fallback |
-| Vector DB | Supabase Postgres + pgvector |
-| Lexical / rerank | `rank_bm25` + local `ms-marco-MiniLM-L-6-v2` cross-encoder |
-| Graph | NetworkX (MVP) → Neo4j AuraDB Free (stretch) |
-| Orchestration | LangGraph · FastAPI · Pydantic |
-| Frontend | Next.js 14 · Tailwind · shadcn/ui · Recharts |
-| Auth | Supabase Auth (email + Google OAuth, row-level security) |
-| Hosting | Vercel (frontend) · Render (backend) · Supabase (DB) |
+| Orchestration | **LangGraph** state machine · FastAPI · Pydantic |
+| LLM | Gemini 3.1 Flash-Lite → Gemini 3 Flash → Groq Llama 3.3 → deterministic offline stub |
+| Retrieval | **Postgres full-text search** + optional dense (pgvector) · RRF · Contextual Retrieval |
+| Reranker | `ms-marco-MiniLM` cross-encoder as **ONNX int8** (CPU, no torch, fits 512 MB) |
+| Exact data | **SEC XBRL** (`data.sec.gov`) — free, keyless, uncapped |
+| Vector / metadata DB | Supabase Postgres + pgvector |
+| Graph | NetworkX entity graph (company → risk → executive → subsidiary) |
+| Frontend | Next.js 14 · TypeScript · Tailwind · Recharts · framer-motion · PWA |
+| Auth / billing | Supabase Auth · guarded Stripe |
+| Hosting | Vercel (frontend) · Render (backend) · Supabase (DB) — auto-deploy from `main` |
+| Eval | FinanceBench harness · RAGAS-wired · PR-blocking gate |
 
-## Quick start (local)
+---
 
+## Engineering highlights
+
+The interesting problems solved along the way:
+
+- **Numbers aren't retrieved, they're looked up.** 73% of financial retrieval failures
+  are table-structure mismatches, so numeric queries are answered from filed XBRL and
+  injected as top-ranked, cited evidence — sidestepping the failure mode entirely.
+- **A real reranker on 512 MB.** The cross-encoder — the single dominant RAG component —
+  runs as int8 ONNX (no torch), 184 MB peak, ~20 ms/batch.
+- **Config that can't drift.** The embedding model is read from the corpus itself, so a
+  re-seed can never silently desync the API from its own data.
+- **Free-tier resilience.** Quota-aware embedding throttle; graceful degradation to
+  lexical-only search when the embedding quota is exhausted; provider fallback to an
+  offline stub so a rate-limited LLM never crashes a request.
+- **Ingestion where there's no shell.** Render's free tier has no shell, so ingestion
+  runs on GitHub Actions straight into Supabase, on a schedule.
+- **Two XBRL traps that produce *confidently wrong numbers*** — the `fy` tag is the
+  filing's year not the fact's, and companies abandon concept tags — both caught by
+  tests, because a wrong number is the one thing this product exists to prevent.
+
+---
+
+## Run it
+
+**Local**
 ```bash
-cp .env.example .env      # fill in free-tier keys
-docker compose up         # backend + frontend
-
-# Ingest real filings/market/news (runs fully offline with local embeddings):
-cd backend
-python -m src.ingestion.run --tickers AAPL MSFT --offline
-# then inspect what's searchable:
-curl localhost:8000/corpus/stats
+cp .env.example .env            # optional keys; runs fully offline without any
+cd backend && python -m src.ingestion.run --tickers AAPL MSFT --offline
+uvicorn src.api.main:app --reload      # API on :8000
+cd ../frontend && npm install && npm run dev   # UI on :3000
 ```
 
-The ingestion pipeline (`backend/src/ingestion`) fetches **real** SEC EDGAR
-filings + yfinance fundamentals + GDELT news, parses them with page/section
-tracking, chunks structure-aware (tables kept intact), embeds, and writes to the
-vector store (Supabase pgvector, or a local SQLite store when no `DATABASE_URL`)
-plus a BM25 index. It is idempotent — re-running an unchanged corpus embeds
-nothing new.
+**Deploy** — Vercel (frontend) + Render Blueprint (`render.yaml`) + Supabase (pgvector).
+Every external service has a free tier and is independently guarded, so the app runs
+with **no keys** and lights up each capability as its key is added. See
+[scripts/deploy.md](scripts/deploy.md).
 
-The retrieval layer (`backend/src/retrieval`) then answers queries via
-**hybrid search** (dense pgvector + BM25, fused with Reciprocal Rank Fusion) → a
-local **cross-encoder reranker** (`ms-marco-MiniLM-L-6-v2`, with a deterministic
-lexical fallback offline) → **citation formatting**, returning ranked evidence
-and an extractive, fully-cited answer. Try it:
-
-```bash
-curl -s localhost:8000/retrieve -H 'content-type: application/json' \
-  -d '{"query": "What were Apple total net sales by product category?", "tickers": ["AAPL"]}'
-```
-
-Every returned chunk carries a `[n]` citation marker tied to a real filing
-page/section and source URL.
-
-The agent layer (`backend/src/agents`) runs a **LangGraph** state machine —
-`research → analyze → comply → (visualize → synthesize | refuse)` — over a
-**multi-provider LLM router** (`backend/src/providers`) that falls through Gemini
-2.5 Flash-Lite → Flash → Groq Llama 3.3 70B → Groq GPT-OSS 120B on rate
-limits/errors, with backoff, response caching, and a per-request provider trace
-for the audit log. Compliance can veto to an honest *"insufficient evidence"*
-refusal. It runs **live** with a `GEMINI_API_KEY`/`GROQ_API_KEY`, or fully
-**offline** with a deterministic stub (no keys needed for CI/demos). Ask it:
-
-```bash
-curl -s localhost:8000/ask -H 'content-type: application/json' \
-  -d '{"query": "What risk factors does Apple disclose?", "tickers": ["AAPL"]}'
-```
-
-The response includes the cited answer, the analyst's cited findings, compliance
-flags, chart specs, the verdict, and the provider trace.
-
-**Adaptive routing** (Phase 4): a complexity classifier picks the cheapest
-pipeline per query and the orchestrator dispatches accordingly —
-
-| Query shape | Route | Engine |
-| --- | --- | --- |
-| single factual lookup | `simple` | hybrid search (Phase 2) |
-| compound / comparative | `multi_hop` | agentic loop (query decomposition, ≤3 iters) |
-| relationship / "share this risk" | `relationship` | **GraphRAG** over a NetworkX entity graph |
-
-The entity graph (`backend/src/retrieval/graph.py`) is built during ingestion —
-`company → faces → risk` and `company → has_officer → executive` edges, each
-carrying citation metadata — so "which companies share competition risk?"
-traverses to the answer with real filing citations. `GET /graph/stats` shows the
-graph; every answer reports both its `planned_route` and the actual `route` used
-(the UI's route badge).
-
-**Self-RAG faithfulness gate** (Phase 5): after synthesis, a gate
-(`backend/src/agents/faithfulness.py`) verifies every claim is grounded in the
-cited evidence. An always-on numeric guardrail blocks any figure not present in
-the sources ("uncited numbers are blocked"), and a semantic check (LLM when live,
-deterministic lexical grounding offline) flags unsupported statements. Ungrounded
-answers are turned into an honest *"insufficient evidence"* refusal instead of
-being returned.
-
-**Audit log** (Phase 5): every answered query appends a structured record —
-query · routes · sources · providers used · verdict · faithfulness score ·
-latency — to a JSONL trail (`backend/src/audit/`), readable via `GET /audit`.
-This is both the compliance trail and the FinOps story (which provider answered,
-how fast).
-
-## Frontend (Phase 6)
-
-A premium **Next.js 14** dashboard (`frontend/`) — Tailwind · Recharts ·
-framer-motion · Supabase Auth — with a dark-mode-first, Bloomberg-terminal-meets-
-SaaS aesthetic and a smooth light/dark toggle (AA contrast in both). Screens:
-landing, login (demo-mode fallback when Supabase isn't configured), the chat
-**workspace** (inline citation chips, source panel, RAG route badge, findings,
-compliance flags, charts, faithfulness bar, the calm "insufficient evidence" state,
-live provider trace), the **ticker dashboard** (corpus + entity-graph analytics),
-the **audit log**, and the **evaluation** gauges.
-
-```bash
-cd frontend && npm install
-npm run dev   # http://localhost:3000  (set NEXT_PUBLIC_API_URL to the backend)
-```
-
-## Evaluation (Phase 7)
-
-Measured on **50 real FinanceBench questions across 17 companies** — peer-reviewed,
-human-curated open-book QA over real 10-Ks (not self-generated). The eval corpus is
-built from each question's real gold evidence passage, so retrieval is a genuine
-needle-in-haystack over real filing text. Harness: `backend/src/evaluation`, run
-with `python -m src.evaluation.run`; results serve at `GET /eval` and render in the
-in-app evaluation dashboard.
-
-Numbers are published **as measured, including the bad ones** — the live results are
-committed to [`eval/results/latest.json`](eval/results/latest.json) and rendered in
-the in-app Evaluation dashboard.
-
-The first run against a **live LLM** was the most valuable thing the harness has done:
-it caught a real defect that manual testing only hinted at.
-
-| Metric | Offline (extractive) | Live LLM — before gate fix |
-| --- | --- | --- |
-| Citation coverage | 100% | **100%** |
-| Answer match | 36% | **42%** |
-| Context hit | 100% | 78% |
-| Faithfulness | 100% | **44%** ⚠️ |
-| Refusal rate | 0% | **56%** ⚠️ |
-
-A 56% refusal rate meant the faithfulness gate was **discarding more than half of its
-own correct, fully-cited answers**. The judge had been told "if a claim is not clearly
-supported, treat it as unsupported", so it flagged legitimate cross-source synthesis
-("both companies cite competition risk") as fabrication — punishing exactly what
-GraphRAG exists to do — and a binary verdict then threw the whole answer away.
-
-Phase 39 fixed this by weighing claims by **materiality**: an unsupported claim
-carrying a *figure* still refuses unconditionally (a wrong number is the harm this
-product exists to prevent), as do ungrounded numbers and bad arithmetic — but prose
-doubt only refuses when it overwhelms the answer. The guarantee is unchanged where it
-counts; it simply stops throwing away good work.
-
-Run it yourself: `cd backend && python -m src.evaluation.run` (results serve at
-`GET /eval`). Canonical **RAGAS** metrics are wired and run when an LLM key is present.
-
-## Build status
-
-Built phase-by-phase; the commit history tells the story.
-
-- [x] Phase 0 — repo scaffold, config, CI skeleton, GitHub remote
-- [x] Phase 1 — ingestion (EDGAR + market + news → pgvector + BM25)
-- [x] Phase 2 — advanced RAG (hybrid + reranker + citations)
-- [x] Phase 3 — agents (LangGraph orchestrator + specialists + provider router)
-- [x] Phase 4 — adaptive routing + GraphRAG
-- [x] Phase 5 — Self-RAG gate + refusal + audit log
-- [x] Phase 6 — premium frontend + Supabase Auth
-- [x] Phase 7 — RAGAS evaluation
-- [x] Phase 8 — deploy config (Vercel + Render + Supabase) + green CI
-- [ ] Phase 9 — live LLM + SSE streaming (needs API keys)
-- [x] Phase 10 — multi-tenancy + data rooms (workspace-isolated retrieval, uploads)
-- [x] Phase 11 — billing + usage metering (plans, quotas, guarded Stripe)
-- [x] Phase 12 — ops (rate limiting, DB audit, chunk purge, Sentry/Langfuse hooks)
-- [x] Phase 13 — security (injection defenses, GDPR export/delete, CodeQL, headers)
-- [x] Phase 14 — depth & GTM (feedback, API keys, watchlists, export, filing alerts)
-- [~] Phase 9/16/18 — SSE streaming + FinOps cost + RLS/OTel/job-queue *(code done; RLS/tracing/async/live-LLM activate with Postgres/Langfuse/Redis/keys)*
-- [x] Phase 20 — teams, invites & RBAC (SSO/MFA need an external IdP)
-- [x] Phase 22 — re-retrieval loop + Exhibit 21 subsidiaries in GraphRAG
-- [x] Phase 23 — GTM (public /pricing, /docs, /trust, onboarding, PostHog)
-- [x] Phase 25 — retail data layer (live quotes + interactive price charts + earnings; FMP-primary, yfinance fallback, DB-independent)
-- [x] Phase 26 — RAG quality leap (Contextual Retrieval on embeddings + BM25; exact-arithmetic calculator + faithfulness guardrail)
-- [x] Phase 27 — consumer UX (shareable answer permalinks, cold-start masking + keep-warm ping, mobile polish)
-- [x] Phase 28 — eval-as-CI-gate (PR-blocking quality thresholds) + public /status page
-- [x] Phase 29 — legal pack (Terms/Privacy/DPA/Subprocessors) + EU AI Act "AI-generated" label + "no-training" statement (Stripe activation pending keys)
-- [x] Phase 30 — growth loop (SEO answer pages /a/[q], /explore catalog, sitemap + robots)
-- [x] Phase 31 — live LLM (Gemini 3.1 Flash-Lite → Gemini 3 Flash) + streaming
-- [x] Phase 32 — **Postgres full-text search** replaces in-memory BM25 (no cold-start rebuild, no OOM, better retrieval)
-- [x] Phase 33 — ingestion on GitHub Actions (Render's free tier has no shell) + keep-warm cron
-- [x] Phase 34 — compare mode, watchlist, PWA (installable)
-- [x] Phase 35 — Stripe setup script (products + prices)
-- [x] Phase 38 — FTS-primary (retrieval no longer gated on embedding quota)
-- [x] Phase 39 — **materiality-aware faithfulness gate** (it was refusing 56% of correct, cited answers)
-- [x] Phase 40 — **insight layer**: Risk Diff (YoY disclosure changes) · red-flag scanner · fundamentals · peer benchmarking · portfolio risk overlap
-- [x] Phase 41 — weekly watchlist digest (Resend), sent from a free GitHub cron
-
-### SaaS layer
-
-Beyond the core copilot, FinCopilot is a multi-tenant B2B SaaS: **data rooms**
-(private, tenant-isolated document collections with upload → per-workspace
-retrieval), **auth** (Supabase JWT / API keys, demo tenant offline), **billing**
-(Free/Pro/Team plans with enforced query + document quotas; guarded Stripe),
-**ops** (per-principal rate limiting, tenant-scoped audit trail, `/ready`, guarded
-Sentry + Langfuse), **security/compliance** (prompt-injection defenses, GDPR
-export/delete, CodeQL + Dependabot, security headers), and **growth** (👍/👎
-feedback, public API keys, filing-alert watchlists, cited report export). Frontend
-screens: Data Rooms and Billing & Usage, plus a data-room scope selector and
-feedback in the workspace.
+---
 
 ## Disclaimer
 
 FinCopilot is an informational research tool. It is **not** investment advice and does
-not execute trades.
+not execute trades. Valuation outputs (e.g. DCF) are transparent calculators driven by
+user-editable assumptions, not recommendations. AI-generated content is labeled as such.
