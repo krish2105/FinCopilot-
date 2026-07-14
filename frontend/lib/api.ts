@@ -124,6 +124,12 @@ export interface Earnings {
 export const PRICE_RANGES = ["1M", "3M", "6M", "1Y", "5Y"] as const;
 export type PriceRange = (typeof PRICE_RANGES)[number];
 
+export interface Watchlist {
+  id: string;
+  ticker: string;
+  created_at?: string;
+}
+
 export interface CorpusStats {
   embed_backend: string;
   embed_dim: number;
@@ -387,6 +393,11 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
   deleteApiKey: (id: string) => req(`/api-keys/${id}`, { method: "DELETE" }),
+  // watchlist (Phase 34)
+  watchlists: () => req<{ watchlists: Watchlist[] }>("/watchlists"),
+  addWatch: (ticker: string) =>
+    req<Watchlist>("/watchlists", { method: "POST", body: JSON.stringify({ ticker }) }),
+  removeWatch: (id: string) => req<{ deleted: string }>(`/watchlists/${id}`, { method: "DELETE" }),
   // live market data (Phase 25)
   quote: (ticker: string) => req<Quote>(`/market/quote/${encodeURIComponent(ticker)}`),
   history: (ticker: string, range: string) =>

@@ -1,0 +1,84 @@
+name: ingest
+
+# Corpus ingestion on GitHub's free runners.
+#
+# Why this exists: Render's free tier has no shell and no one-off jobs, so there is
+# nowhere on the server to run a bulk seed. GitHub Actions gives us a free, scheduled
+# compute box that can talk to Supabase directly — so ingestion lives here.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   DATABASE_URL      Supabase SESSION POOLER URI (IPv4)
+#   GEMINI_API_KEY    for gemini-embedding-001 (768d)
+#   EDGAR_USER_AGENT  e.g. "FinCopilot research you@example.com" (SEC requires it)
+#
+# Ingestion is idempotent (chunk ids are content hashes), so re-runs only embed what
+# is genuinely new — safe to run on a schedule, and safe to re-run after a quota stop.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC — pick up newly filed documents
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Space-separated tickers to ingest"
+        required: false
+        default: "AAPL MSFT NVDA GOOGL AMZN META TSLA JPM V JNJ"
+      sources:
+        description: "Space-separated sources (edgar market news subsidiaries)"
+        required: false
+        default: "edgar market news"
+      embed_tpm:
+        description: "Gemini embedding tokens/min budget (free tier ~30k)"
+        required: false
+        default: "25000"
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350 # free-tier embedding is token-rate limited; give it room
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run ingestion
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          EDGAR_USER_AGENT: ${{ secrets.EDGAR_USER_AGENT }}
+          FINCOPILOT_EMBED_BACKEND: gemini
+          FINCOPILOT_OFFLINE_MODE: "false"
+          GEMINI_EMBED_TPM: ${{ github.event.inputs.embed_tpm || '25000' }}
+        run: |
+          python -m src.ingestion.run \
+            --tickers ${{ github.event.inputs.tickers || 'AAPL MSFT NVDA GOOGL AMZN META TSLA JPM V JNJ' }} \
+            --sources ${{ github.event.inputs.sources || 'edgar market news' }}
+
+      - name: Corpus summary
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python - <<'PY'
+          import os, psycopg
+          with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=30) as c, c.cursor() as cur:
+              cur.execute("select count(*) from chunks")
+              print("total chunks:", cur.fetchone()[0])
+              cur.execute("select ticker, count(*) from chunks group by 1 order by 2 desc")
+              for t, n in cur.fetchall():
+                  print(f"  {t}: {n}")
+          PY
