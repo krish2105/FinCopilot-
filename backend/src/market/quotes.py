@@ -118,6 +118,14 @@ def _fmp_quote(ticker: str) -> dict[str, Any] | None:
     if pct is None:
         pct = _f(d.get("changesPercentage"))
     change = _f(d.get("change"))
+
+    # FMP's /stable quote drops the `pe` field that v3 returned, so the UI showed a
+    # dash. Derive it — P/E is just price over trailing EPS.
+    pe = _f(d.get("pe"))
+    if pe is None:
+        eps = _f(d.get("eps"))
+        if eps and eps > 0:
+            pe = round(price / eps, 2)
     return {
         "ticker": sym,
         "name": d.get("name") or sym,
@@ -130,7 +138,7 @@ def _fmp_quote(ticker: str) -> dict[str, Any] | None:
         "day_high": _f(d.get("dayHigh")),
         "day_low": _f(d.get("dayLow")),
         "volume": _f(d.get("volume")),
-        "pe": _f(d.get("pe")),
+        "pe": pe,
         "fifty_two_week_high": _f(d.get("yearHigh")),
         "fifty_two_week_low": _f(d.get("yearLow")),
         "exchange": d.get("exchange"),
@@ -184,8 +192,18 @@ def get_quote(ticker: str) -> dict[str, Any] | None:
         for provider in (_fmp_quote, _yf_quote):
             try:
                 q = provider(ticker)
-                if q is not None:
-                    return q
+                if q is None:
+                    continue
+                # FMP's /stable quote carries neither `pe` nor `eps`, so the UI rendered
+                # a dash. Fall back to the income statement (cached 24h, so this is
+                # usually free) and derive P/E from price / trailing EPS.
+                if q.get("pe") is None and q.get("price"):
+                    f = get_fundamentals(ticker)
+                    points = (f or {}).get("points") or []
+                    eps = points[0].get("eps") if points else None
+                    if eps and eps > 0:
+                        q["pe"] = round(q["price"] / eps, 2)
+                return q
             except Exception as exc:  # noqa: BLE001
                 logger.warning("quote provider %s(%s) failed: %s", provider.__name__, ticker, exc)
         return None

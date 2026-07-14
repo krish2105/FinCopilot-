@@ -24,8 +24,18 @@ logger = logging.getLogger(__name__)
 
 
 def results_dir() -> str:
+    """Where eval results are written — and, crucially, where the API can read them.
+
+    These used to live at the repo root (`<repo>/eval/results`). But render.yaml sets
+    `rootDir: backend`, so the Docker build context is `backend/` only: the repo-root
+    directory is simply not in the image. `GET /eval` was therefore reading a path that
+    could never exist in production, and the Evaluation dashboard showed "No run yet"
+    forever — no matter how many evals we ran or committed.
+
+    Results now live *inside* the backend package so they ship with the image.
+    """
     here = os.path.dirname(__file__)
-    return os.path.abspath(os.path.join(here, "..", "..", "..", "eval", "results"))
+    return os.path.abspath(os.path.join(here, "..", "..", "eval_results"))
 
 
 def latest_results_path() -> str:
