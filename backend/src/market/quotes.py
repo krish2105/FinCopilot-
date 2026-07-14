@@ -352,6 +352,50 @@ def _yf_earnings(ticker: str) -> dict[str, Any] | None:
     return {"ticker": ticker.upper(), "next_date": next_date, "history": past, "source": "yfinance"}
 
 
+# --------------------------------------------------------------------------- #
+# Fundamentals (Phase 40) — income-statement trend for charts + peer benchmarking
+# --------------------------------------------------------------------------- #
+def get_fundamentals(ticker: str, years: int = 5) -> dict[str, Any] | None:
+    """Revenue / net income / margins / EPS per year, newest first (24h TTL)."""
+    sym = ticker.upper()
+
+    def _load() -> dict[str, Any] | None:
+        data = _fmp_get(_FMP_STABLE, "income-statement", {"symbol": sym, "limit": years})
+        if not isinstance(data, list) or not data:
+            data = _fmp_get(_FMP_V3, f"income-statement/{sym}", {"limit": years})
+        if not isinstance(data, list) or not data:
+            return None
+
+        points: list[dict[str, Any]] = []
+        for row in data[:years]:
+            revenue = _f(row.get("revenue"))
+            net_income = _f(row.get("netIncome"))
+            gross_profit = _f(row.get("grossProfit"))
+            points.append(
+                {
+                    "period": str(row.get("calendarYear") or row.get("date", ""))[:10],
+                    "revenue": revenue,
+                    "net_income": net_income,
+                    "gross_margin": round(gross_profit / revenue * 100, 2)
+                    if revenue and gross_profit is not None
+                    else None,
+                    "net_margin": round(net_income / revenue * 100, 2)
+                    if revenue and net_income is not None
+                    else None,
+                    "eps": _f(row.get("eps")),
+                }
+            )
+        if not points:
+            return None
+        return {"ticker": sym, "points": points, "source": "fmp"}
+
+    try:
+        return _cached(f"fund:{sym}:{years}", 86400.0, _load)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("fundamentals(%s) failed: %s", sym, exc)
+        return None
+
+
 def get_earnings(ticker: str) -> dict[str, Any] | None:
     """Recent EPS beats/misses + next report date (900s TTL)."""
 

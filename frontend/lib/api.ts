@@ -130,6 +130,76 @@ export interface Watchlist {
   created_at?: string;
 }
 
+// ---- Insight layer (Phase 40) ----
+export interface RiskChange {
+  change: string; // new | removed | escalated
+  topic: string;
+  detail: string;
+  citation_marker: string;
+}
+export interface RiskDiff {
+  ticker: string;
+  year_from: string;
+  year_to: string;
+  summary: string;
+  changes: RiskChange[];
+  available: boolean;
+  message: string;
+}
+
+export interface RedFlag {
+  category: string;
+  detail: string;
+  severity: string; // high | medium | low
+  source_url: string;
+  title: string;
+}
+export interface RedFlagReport {
+  ticker: string;
+  flags: RedFlag[];
+  scanned_sources: number;
+  clean: boolean;
+}
+
+export interface SharedRisk {
+  topic: string;
+  companies: string[];
+  concentration: number;
+}
+export interface PortfolioOverlap {
+  tickers: string[];
+  shared_risks: SharedRisk[];
+  summary: string;
+}
+
+export interface FundamentalPoint {
+  period: string;
+  revenue: number | null;
+  net_income: number | null;
+  gross_margin: number | null;
+  net_margin: number | null;
+  eps: number | null;
+}
+export interface Fundamentals {
+  ticker: string;
+  points: FundamentalPoint[];
+  source: string;
+}
+
+export interface PeerRow {
+  ticker: string;
+  name: string;
+  price: number | null;
+  change_pct: number | null;
+  market_cap: number | null;
+  pe: number | null;
+  revenue: number | null;
+  net_margin: number | null;
+}
+export interface PeerTable {
+  rows: PeerRow[];
+}
+
 export interface CorpusStats {
   embed_backend: string;
   embed_dim: number;
@@ -393,6 +463,19 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
   deleteApiKey: (id: string) => req(`/api-keys/${id}`, { method: "DELETE" }),
+  // insights (Phase 40)
+  riskDiff: (ticker: string) => req<RiskDiff>(`/insights/risk-diff/${encodeURIComponent(ticker)}`),
+  redFlags: (ticker: string) =>
+    req<RedFlagReport>(`/insights/red-flags/${encodeURIComponent(ticker)}`),
+  fundamentals: (ticker: string) =>
+    req<Fundamentals>(`/insights/fundamentals/${encodeURIComponent(ticker)}`),
+  peers: (tickers: string[]) =>
+    req<PeerTable>(`/insights/peers?tickers=${encodeURIComponent(tickers.join(","))}`),
+  portfolio: (tickers: string[]) =>
+    req<PortfolioOverlap>("/insights/portfolio", {
+      method: "POST",
+      body: JSON.stringify({ tickers }),
+    }),
   // watchlist (Phase 34)
   watchlists: () => req<{ watchlists: Watchlist[] }>("/watchlists"),
   addWatch: (ticker: string) =>

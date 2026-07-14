@@ -10,6 +10,7 @@ import {
   FolderLock,
   GaugeCircle,
   LayoutDashboard,
+  Lightbulb,
   Menu,
   MessagesSquare,
   Star,
@@ -26,6 +27,7 @@ import { isAuthConfigured } from "@/lib/supabase";
 const NAV = [
   { href: "/workspace", label: "Workspace", icon: MessagesSquare },
   { href: "/rooms", label: "Data Rooms", icon: FolderLock },
+  { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/dashboard", label: "Ticker Dashboard", icon: LayoutDashboard },
   { href: "/compare", label: "Compare", icon: ArrowLeftRight },
   { href: "/watchlist", label: "Watchlist", icon: Star },
