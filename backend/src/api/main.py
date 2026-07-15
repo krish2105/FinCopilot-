@@ -92,11 +92,32 @@ def _rebuild_indexes() -> None:
         if not pg and not os.path.exists(bm25_path()):
             BM25Index.build(store.iter_lite(), bm25_path())
             log.info("warm_indexes: rebuilt in-memory BM25")
-        if not os.path.exists(graph_path()):
+        # Rebuild the graph if it's missing OR stale — "stale" meaning it covers fewer
+        # companies than the corpus actually holds. That auto-heals a graph left behind
+        # by a test run (which writes a tiny fixture graph to the same data dir) or by a
+        # corpus that grew since the last build.
+        corpus_tickers = len(store.counts_by_ticker())
+        existing = EntityGraph.load(graph_path())
+        graph_companies = len(existing.companies()) if existing else 0
+        if existing is None or graph_companies < corpus_tickers:
             EntityGraph.build(store, graph_path())  # uses iter_lite internally
-            log.info("warm_indexes: rebuilt entity graph")
+            log.info(
+                "warm_indexes: (re)built entity graph (had %d companies, corpus has %d)",
+                graph_companies,
+                corpus_tickers,
+            )
     except Exception:  # noqa: BLE001
         log.exception("warm_indexes: rebuild failed (hybrid may be degraded)")
+
+    # Prewarm the screener's per-company fundamentals cache — the first /valuation/screener
+    # otherwise does ~100 sequential remote lookups (tens of seconds) inside the request.
+    try:
+        from src.valuation import screener
+
+        n = screener.prewarm(get_db())
+        log.info("warm_indexes: prewarmed screener fundamentals for %d tickers", n)
+    except Exception:  # noqa: BLE001
+        log.exception("warm_indexes: screener prewarm failed (first screen will be slow)")
 
 
 @app.on_event("startup")

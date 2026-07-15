@@ -185,11 +185,109 @@ def _yf_quote(ticker: str) -> dict[str, Any] | None:
     }
 
 
-def get_quote(ticker: str) -> dict[str, Any] | None:
-    """Current price + day stats (60s TTL). FMP first, yfinance fallback."""
+# --------------------------------------------------------------------------- #
+# Yahoo v8 chart endpoint — keyless, and far less rate-limited than the
+# quoteSummary endpoint yfinance uses (which 429s hard from datacenter IPs). Final
+# fallback so quotes/history render with no FMP key. Returns current price + history
+# in one payload, so both providers share a cached fetch.
+# --------------------------------------------------------------------------- #
+_YCHART_RANGE: dict[str, str] = {"1M": "1mo", "3M": "3mo", "6M": "6mo", "1Y": "1y", "5Y": "5y"}
+_YCHART_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+}
+
+
+def _ychart(ticker: str, rng: str, interval: str) -> dict[str, Any] | None:
+    """Raw Yahoo v8 chart result (meta + timestamps + closes), cached 60s."""
 
     def _load() -> dict[str, Any] | None:
-        for provider in (_fmp_quote, _yf_quote):
+        import requests
+
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker.upper()}"
+        try:
+            resp = requests.get(
+                url, params={"range": rng, "interval": interval},
+                timeout=15, headers=_YCHART_HEADERS,
+            )
+            if resp.status_code != 200:
+                logger.warning("yahoo-chart %s -> HTTP %s", ticker, resp.status_code)
+                return None
+            result = resp.json().get("chart", {}).get("result")
+            return result[0] if result else None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("yahoo-chart(%s) failed: %s", ticker, exc)
+            return None
+
+    return _cached(f"ychart:{ticker.upper()}:{rng}:{interval}", 60.0, _load)
+
+
+def _ychart_quote(ticker: str) -> dict[str, Any] | None:
+    res = _ychart(ticker, "5d", "1d")
+    if not res:
+        return None
+    meta = res.get("meta") or {}
+    price = _f(meta.get("regularMarketPrice"))
+    prev = _f(meta.get("chartPreviousClose") or meta.get("previousClose"))
+    if price is None:
+        return None
+    change = (price - prev) if prev is not None else None
+    change_pct = (change / prev * 100) if (change is not None and prev) else None
+    return {
+        "ticker": ticker.upper(),
+        "name": meta.get("longName") or meta.get("shortName") or ticker.upper(),
+        "price": round(price, 2),
+        "previous_close": round(prev, 2) if prev is not None else None,
+        "change": round(change, 2) if change is not None else None,
+        "change_pct": round(change_pct, 2) if change_pct is not None else None,
+        "currency": meta.get("currency") or "USD",
+        "market_cap": None,
+        "day_high": _f(meta.get("regularMarketDayHigh")),
+        "day_low": _f(meta.get("regularMarketDayLow")),
+        "volume": _f(meta.get("regularMarketVolume")),
+        "pe": None,
+        "fifty_two_week_high": _f(meta.get("fiftyTwoWeekHigh")),
+        "fifty_two_week_low": _f(meta.get("fiftyTwoWeekLow")),
+        "exchange": meta.get("exchangeName"),
+        "sector": None,
+        "source": "yahoo",
+    }
+
+
+def _ychart_history(ticker: str, rng: str) -> dict[str, Any] | None:
+    yrange = _YCHART_RANGE.get(rng, "1y")
+    interval = "1wk" if rng == "5Y" else "1d"
+    res = _ychart(ticker, yrange, interval)
+    if not res:
+        return None
+    stamps = res.get("timestamp") or []
+    closes = (((res.get("indicators") or {}).get("quote") or [{}])[0]).get("close") or []
+    from datetime import datetime, timezone
+
+    points = [
+        {"x": datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat(), "y": round(c, 2)}
+        for ts, c in zip(stamps, closes, strict=False)
+        if c is not None
+    ]
+    if not points:
+        return None
+    first, last = points[0]["y"], points[-1]["y"]
+    return {
+        "ticker": ticker.upper(),
+        "range": rng,
+        "points": points,
+        "change_pct": round((last - first) / first * 100, 2) if first else None,
+        "source": "yahoo",
+    }
+
+
+def get_quote(ticker: str) -> dict[str, Any] | None:
+    """Current price + day stats (60s TTL). FMP → yfinance → Yahoo chart (keyless)."""
+
+    def _load() -> dict[str, Any] | None:
+        # FMP (if keyed) → Yahoo chart (keyless, fast, reliable) → yfinance (rich but
+        # 429s from many IPs, so last). Ordering matters: on a cold dashboard load we
+        # don't want to eat a 429 timeout per ticker before reaching a working source.
+        for provider in (_fmp_quote, _ychart_quote, _yf_quote):
             try:
                 q = provider(ticker)
                 if q is None:
@@ -288,7 +386,7 @@ def get_history(ticker: str, rng: str = "1Y") -> dict[str, Any] | None:
         rng = "1Y"
 
     def _load() -> dict[str, Any] | None:
-        for provider in (_fmp_history, _yf_history):
+        for provider in (_fmp_history, _ychart_history, _yf_history):
             try:
                 h = provider(ticker, rng)
                 if h is not None:

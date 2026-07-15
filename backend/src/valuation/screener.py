@@ -42,12 +42,40 @@ def _metric(db: Database, ticker: str, metric: str) -> float | None:
     return f["value"] if f else None
 
 
-def row_for(db: Database, ticker: str) -> dict[str, Any]:
-    """Latest filed value of every screenable field for one company."""
-    row: dict[str, Any] = {"ticker": ticker.upper()}
+# Per-company fundamentals are ~10 lookups against remote Postgres; doing that for the
+# whole universe on every screen is ~100 sequential round-trips (tens of seconds). Filed
+# fundamentals don't change intraday, so cache each company's row. Keyed by ticker; the
+# TTL bounds staleness across a new filing being ingested.
+_ROW_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_ROW_TTL_S = 6 * 60 * 60  # 6h
+
+
+def _now() -> float:
+    import time
+
+    return time.time()
+
+
+def row_for(db: Database, ticker: str, use_cache: bool = True) -> dict[str, Any]:
+    """Latest filed value of every screenable field for one company (cached)."""
+    key = ticker.upper()
+    if use_cache:
+        hit = _ROW_CACHE.get(key)
+        if hit and (_now() - hit[0]) < _ROW_TTL_S:
+            return hit[1]
+    row: dict[str, Any] = {"ticker": key}
     for field, metric in FIELDS.items():
         row[field] = _metric(db, ticker, metric)
+    _ROW_CACHE[key] = (_now(), row)
     return row
+
+
+def prewarm(db: Database, universe: list[str] | None = None) -> int:
+    """Populate the row cache for the whole universe (called off the hot path)."""
+    universe = [t.upper() for t in (universe or store.tickers(db))]
+    for t in universe:
+        row_for(db, t)
+    return len(universe)
 
 
 def screen(db: Database, filters: list[dict], universe: list[str] | None = None) -> dict:
