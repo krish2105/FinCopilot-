@@ -164,8 +164,14 @@ def answer_numeric(db: Database, query: str, tickers: list[str] | None) -> dict 
     back to normal retrieval. Deliberately conservative: it would rather decline than
     answer the wrong question confidently.
     """
+    # The UI often sends no ticker filter (the user just types "Apple's revenue"), so
+    # resolve the company from the query text before giving up — otherwise every plain-
+    # English numeric question skips the exact-figure path and the model refuses.
     if not tickers:
-        return None
+        resolved = _ticker_in_query(query)
+        if not resolved:
+            return None
+        tickers = [resolved]
     metric = match_metric(query)
     if not metric:
         return None
@@ -184,6 +190,47 @@ def answer_numeric(db: Database, query: str, tickers: list[str] | None) -> dict 
         return None
     logger.info("xbrl: answered %r from filed facts (%s)", query[:60], fact.get("accn"))
     return fact
+
+
+# Plain-English company names -> ticker, so "Apple's revenue" resolves even with no
+# ticker filter. Covers the ingested universe; extend as the corpus grows.
+_NAME_TO_TICKER: dict[str, str] = {
+    "apple": "AAPL",
+    "microsoft": "MSFT",
+    "amazon": "AMZN",
+    "alphabet": "GOOGL",
+    "google": "GOOGL",
+    "johnson & johnson": "JNJ",
+    "johnson and johnson": "JNJ",
+    "j&j": "JNJ",
+    "jpmorgan": "JPM",
+    "jp morgan": "JPM",
+    "j.p. morgan": "JPM",
+    "meta": "META",
+    "facebook": "META",
+    "nvidia": "NVDA",
+    "tesla": "TSLA",
+    "visa": "V",
+}
+
+
+def _ticker_in_query(query: str) -> str | None:
+    """Resolve a ticker from the query: an explicit known symbol, else a company name."""
+    import re
+
+    from src.config.settings import get_settings
+
+    known = {t.upper() for t in get_settings().tickers}
+    for sym in re.findall(r"\b[A-Za-z]{1,5}\b", query):
+        up = sym.upper()
+        if up in known and up not in {"A", "I"}:  # avoid pronouns/articles as tickers
+            return up
+    q = query.lower()
+    # Longest names first so "johnson & johnson" wins over a bare "johnson".
+    for name in sorted(_NAME_TO_TICKER, key=len, reverse=True):
+        if name in q and _NAME_TO_TICKER[name] in known:
+            return _NAME_TO_TICKER[name]
+    return None
 
 
 def _fiscal_year_in(query: str) -> int | None:
