@@ -23,12 +23,25 @@ class RateLimiter:
         self._mem: dict[str, tuple[int, int]] = {}  # key -> (window, count)
         self._redis = None
         if redis_url:
-            try:
-                import redis
+            # Upstash gives you both a REST URL (https://) and a redis:// connection
+            # string — redis-py needs the latter. Detect the wrong scheme up front and
+            # fall back to the in-memory limiter (fine for a single instance) with a
+            # clear, one-time message instead of a scary "unavailable" warning.
+            scheme = redis_url.split("://", 1)[0].lower() if "://" in redis_url else ""
+            if scheme not in ("redis", "rediss", "unix"):
+                logger.info(
+                    "REDIS_URL scheme %r is not a redis:// connection string; using "
+                    "in-memory rate limiting. Set the redis:// (or rediss://) URL to "
+                    "share limits across instances.",
+                    scheme or "(none)",
+                )
+            else:
+                try:
+                    import redis
 
-                self._redis = redis.from_url(redis_url)
-            except Exception as exc:
-                logger.warning("Redis unavailable for rate limiting: %s", exc)
+                    self._redis = redis.from_url(redis_url)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Redis unavailable for rate limiting: %s", exc)
 
     def _window(self) -> int:
         return int(time.time() // 60)

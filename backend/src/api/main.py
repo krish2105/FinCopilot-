@@ -6,8 +6,16 @@ added from Phase 3 onward.
 
 from __future__ import annotations
 
+import warnings
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# google-genai's GenerateContentConfig annotates a field with the `any` builtin, so
+# Pydantic emits "<built-in function any> is not a Python type" every time we build a
+# request config. It's harmless (that field just skips validation) and lives in the
+# vendored library, not our code — silence only that exact message to keep logs clean.
+warnings.filterwarnings("ignore", message=r".*is not a Python type.*", category=UserWarning)
 
 from src.api.account_routes import router as account_router
 from src.api.agent_routes import router as agent_router
