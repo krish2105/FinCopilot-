@@ -44,6 +44,24 @@ class VectorStore:
     def delete_by_doc_id(self, doc_id: str) -> int: ...
     def count(self) -> int: ...
     def iter_all(self) -> list[Chunk]: ...
+
+    def iter_lite(self) -> list[Chunk]:
+        """Chunks WITHOUT their embeddings.
+
+        Graph and BM25 builds need only text + metadata, never the vectors. Loading
+        every 384-float embedding into a Python list for a 16k+ chunk corpus is a
+        ~300 MB spike that OOM-kills a 512 MB instance. Default: fall back to the full
+        load (correct, just heavier); Postgres/SQLite override it with a lean SELECT.
+        """
+        return self.iter_all()
+
+    def counts_by_ticker(self) -> dict[str, int]:
+        """Chunk counts per ticker via aggregation, without materializing rows."""
+        counts: dict[str, int] = {}
+        for c in self.iter_lite():
+            counts[c.metadata.ticker] = counts.get(c.metadata.ticker, 0) + 1
+        return counts
+
     def search(
         self,
         query_vec: list[float],

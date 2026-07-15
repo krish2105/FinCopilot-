@@ -82,7 +82,10 @@ class EntityGraph:
     @classmethod
     def build(cls, store: VectorStore, path: str | None = None) -> EntityGraph:
         eg = cls()
-        for chunk in store.iter_all():
+        # iter_lite: text + metadata only. Loading embeddings for a 16k-chunk corpus
+        # here is a ~300 MB spike that OOM-kills a 512 MB instance — and the graph
+        # never uses the vectors anyway.
+        for chunk in store.iter_lite():
             eg._ingest_chunk(chunk)
         if path:
             eg.save(path)

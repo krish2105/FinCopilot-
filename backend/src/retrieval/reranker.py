@@ -48,29 +48,38 @@ def resolve_rerank_backend(settings: Settings) -> str:
 
 
 class Reranker:
+    _NAMES = {
+        "onnx": f"{_CE_MODEL} (onnx-int8)",
+        "cross-encoder": _CE_MODEL,
+        "lexical": "lexical-v1",
+    }
+
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or get_settings()
         self.backend = resolve_rerank_backend(self.settings)
         self._session = None
         self._tokenizer = None
         self._ce = None
+        # The cross-encoder is ~184 MB resident. Load it lazily on the first rerank so
+        # startup and light endpoints (stats, XBRL, valuation) never pay for it — that
+        # matters on a 512 MB instance.
+        self._loaded = self.backend == "lexical"
+        self.name = self._NAMES[self.backend]
 
+    def _ensure_loaded(self) -> None:
+        if self._loaded:
+            return
+        self._loaded = True
         if self.backend == "onnx" and not self._try_load_onnx():
             logger.warning("ONNX reranker unavailable; trying sentence-transformers")
             self.backend = "cross-encoder"
         if self.backend == "cross-encoder" and not self._try_load_ce():
-            # Loud: retrieval quality falls off a cliff without a cross-encoder.
             logger.warning(
                 "NO CROSS-ENCODER — falling back to the lexical reranker. Retrieval "
                 "quality is materially degraded; install onnxruntime + tokenizers."
             )
             self.backend = "lexical"
-
-        self.name = {
-            "onnx": f"{_CE_MODEL} (onnx-int8)",
-            "cross-encoder": _CE_MODEL,
-            "lexical": "lexical-v1",
-        }[self.backend]
+        self.name = self._NAMES[self.backend]
 
     # --- loading -------------------------------------------------------------
     def _try_load_onnx(self) -> bool:
@@ -138,6 +147,7 @@ class Reranker:
     ) -> list[RetrievedChunk]:
         if not chunks:
             return []
+        self._ensure_loaded()
 
         if self.backend == "onnx":
             try:

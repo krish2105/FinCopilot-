@@ -125,6 +125,26 @@ class PgVectorStore(VectorStore):
         rows = self.conn.execute(f"SELECT {_COLS} FROM chunks").fetchall()
         return [self._row_to_chunk(r) for r in rows]
 
+    def iter_lite(self) -> list[Chunk]:
+        """Every chunk without its embedding — the memory-safe load for graph/BM25.
+
+        Selecting the ~1.5 KB embedding column for 16k+ chunks OOM-killed the 512 MB
+        instance on startup and on /corpus/stats. We select NULL in the embedding slot
+        so the existing positional row->chunk mapping still applies (embedding=None)."""
+        # Same column order as _COLS, but NULL where the embedding would be.
+        lite_cols = (
+            "chunk_id, doc_id, ticker, doc_type, title, source_url, filing_date, "
+            "page, section, text, token_estimate, NULL AS embedding, workspace_id"
+        )
+        rows = self.conn.execute(f"SELECT {lite_cols} FROM chunks").fetchall()
+        return [self._row_to_chunk(r) for r in rows]
+
+    def counts_by_ticker(self) -> dict[str, int]:
+        rows = self.conn.execute(
+            "SELECT ticker, count(*) FROM chunks GROUP BY ticker"
+        ).fetchall()
+        return {r[0]: int(r[1]) for r in rows}
+
     def search(
         self,
         query_vec: list[float],
