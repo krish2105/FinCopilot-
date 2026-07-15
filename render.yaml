@@ -15,7 +15,15 @@ services:
       - key: PORT
         value: 8000
       - key: FINCOPILOT_TICKERS
-        value: AAPL,MSFT,AMZN,TSLA,JPM,NVDA,META,GOOGL,EMAAR.AE,IHC.AE
+        value: AAPL,MSFT,AMZN,TSLA,JPM,NVDA,META,GOOGL,JNJ,V
+      # The ONNX cross-encoder (onnxruntime + model + inference arena) pushes the 512 MB
+      # free instance over its limit during a retrieval request, OOM-killing the worker
+      # (every /ask and /insights/* call 502'd). The lexical reranker is pure Python and
+      # near-zero memory; on this FTS-primary financial corpus it ranks well, and numeric
+      # answers come from exact XBRL injection regardless. Use the real cross-encoder on a
+      # paid tier (>=1 GB) or locally by unsetting this.
+      - key: FINCOPILOT_RERANK_BACKEND
+        value: lexical
       # FTS-primary (Phase 38): Postgres full-text search does the retrieval and needs
       # no quota, so dense vectors are optional. `hash` = instant, unlimited placeholder
       # vectors; the retriever skips the non-semantic dense leg automatically.
