@@ -35,7 +35,7 @@ const FEATURES = [
   { icon: Sparkles, title: "Insufficient-evidence contract", body: "A designed refusal state — FinCopilot says 'I don't know' instead of hallucinating." },
 ];
 
-const TICKERS = ["AAPL", "MSFT", "AMZN", "TSLA", "JPM", "NVDA", "META", "GOOGL", "EMAAR.AE", "IHC.AE"];
+const TICKERS = ["AAPL", "MSFT", "AMZN", "TSLA", "JPM", "NVDA", "META", "GOOGL", "JNJ", "V"];
 
 export default function Landing() {
   return (

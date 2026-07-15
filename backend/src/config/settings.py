@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     neo4j_password: str | None = None
 
     # --- Runtime ---
-    fincopilot_tickers: str = "AAPL,MSFT,AMZN,TSLA,JPM,NVDA,META,GOOGL,EMAAR.AE,IHC.AE"
+    fincopilot_tickers: str = "AAPL,MSFT,AMZN,TSLA,JPM,NVDA,META,GOOGL,JNJ,V"
     fincopilot_offline_mode: bool = False
     log_level: str = "INFO"
     # Production CORS: comma-separated allowed origins (the deployed frontend).

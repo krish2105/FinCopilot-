@@ -165,11 +165,28 @@ def ready() -> dict[str, object]:
 
 @app.get("/")
 def root() -> dict[str, object]:
+    # Prefer the tickers actually in the corpus over the static settings default, so the
+    # UI's ticker chips always match what's ingested (the default can drift from the
+    # data — e.g. list a ticker that was never ingested, or omit one that was). Falls
+    # back to settings when the corpus is empty or unreachable.
+    tickers = settings.tickers
+    try:
+        from src.ingestion.embed import Embedder
+        from src.retrieval.store import get_vector_store
+
+        embedder = Embedder(settings)
+        store = get_vector_store(embedder.dim, embedder.name, settings)
+        corpus = sorted(store.counts_by_ticker())
+        if corpus:
+            tickers = corpus
+    except Exception:  # noqa: BLE001
+        pass
+
     return {
         "name": "FinCopilot API",
         "version": app.version,
         "phase": "20 — teams + RBAC",
-        "tickers": settings.tickers,
+        "tickers": tickers,
         "disclaimer": "Informational research only. Not investment advice.",
     }
 
