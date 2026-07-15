@@ -58,16 +58,14 @@ app.include_router(saas_router)
 app.include_router(team_router)
 
 
-@app.on_event("startup")
-def _warm_indexes() -> None:
-    """Rebuild the BM25 index + entity graph from the shared vector store on boot.
+def _rebuild_indexes() -> None:
+    """Rebuild the BM25 index + entity graph from the shared vector store.
 
     We seed the vector store (Supabase) from a laptop because the Render free tier
     has no shell, and Render's disk is ephemeral — so the file-based BM25 index and
     entity graph aren't present on the server. Since the vector store already holds
     every chunk's text, we can regenerate both from it, making hybrid search and
-    GraphRAG work in production. Runs only when the BM25 file is missing (once per
-    cold start) and never blocks startup on failure.
+    GraphRAG work in production. Runs only when the file is missing.
     """
     import logging
     import os
@@ -99,6 +97,23 @@ def _warm_indexes() -> None:
             log.info("warm_indexes: rebuilt entity graph")
     except Exception:  # noqa: BLE001
         log.exception("warm_indexes: rebuild failed (hybrid may be degraded)")
+
+
+@app.on_event("startup")
+def _warm_indexes() -> None:
+    """Kick the index rebuild onto a background thread so it never blocks boot.
+
+    Building the entity graph pulls all ~16k chunk texts from Supabase over the
+    network — tens of seconds. If that runs inside the startup event, uvicorn won't
+    open its port until it finishes, so Render's health check times out during the
+    deploy window and the deploy is marked dead (x-render-routing: no-deploy). Running
+    it in a daemon thread lets /health answer instantly (Render marks the deploy live)
+    while the graph builds in the background; /graph/* endpoints degrade gracefully
+    (return empty) until it's ready, then populate on the next request.
+    """
+    import threading
+
+    threading.Thread(target=_rebuild_indexes, name="warm-indexes", daemon=True).start()
 
 
 @app.middleware("http")
