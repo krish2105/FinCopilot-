@@ -377,9 +377,37 @@ async function authHeaders(): Promise<Record<string, string>> {
   return {};
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// The API runs on a free tier that spins down after ~15 min idle; the first request
+// then takes ~50s to wake and can fail outright (network error) or return a 502/503
+// from the platform's router while the container boots. Instead of surfacing that as
+// "Failed to fetch", retry through the wake with a generous per-try timeout.
+export async function fetchWithWake(url: string, init: RequestInit = {}, tries = 3): Promise<Response> {
+  let lastErr: unknown;
+  for (let i = 0; i < tries; i++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 95_000);
+    try {
+      const res = await fetch(url, { ...init, signal: ctrl.signal });
+      clearTimeout(timer);
+      if ((res.status === 502 || res.status === 503 || res.status === 504) && i < tries - 1) {
+        await sleep(4000 * (i + 1)); // platform router up, container still booting
+        continue;
+      }
+      return res;
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e;
+      if (i < tries - 1) await sleep(4000 * (i + 1)); // backend likely cold-starting
+    }
+  }
+  throw lastErr ?? new Error("Network error");
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const auth = await authHeaders();
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchWithWake(`${API_BASE}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...auth, ...(init?.headers || {}) },
     cache: "no-store",
@@ -412,7 +440,7 @@ export const api = {
     },
   ) => {
     const auth = await authHeaders();
-    const res = await fetch(`${API_BASE}/ask/stream`, {
+    const res = await fetchWithWake(`${API_BASE}/ask/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...auth },
       body: JSON.stringify({

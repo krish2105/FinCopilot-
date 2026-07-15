@@ -9,7 +9,9 @@ name: keep-warm
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    # Every 5 min. GitHub often delays scheduled runs by 10-20 min under load, so we
+    # ping more often than Render's 15-min spin-down window to stay warm in practice.
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 jobs:
